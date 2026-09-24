@@ -142,3 +142,83 @@
     color: var(--color-foreground);
   }
 }
+
+/* ---------------------------------------------------------------
+ * Reading sanctuary: paper themes + bilingual typography tokens
+ * --------------------------------------------------------------- */
+
+.sanctuary {
+  --paper: oklch(0.96 0.02 85);
+  --paper-raised: oklch(0.985 0.012 85);
+  --ink: oklch(0.28 0.03 60);
+  --ink-soft: oklch(0.5 0.03 60);
+  --rule: oklch(0.86 0.03 80);
+  --glow: oklch(0.55 0.11 55);
+  background-color: var(--paper);
+  color: var(--ink);
+}
+
+.sanctuary[data-theme="parchment"] {
+  --paper: oklch(0.945 0.028 83);
+  --paper-raised: oklch(0.975 0.02 85);
+  --ink: oklch(0.29 0.035 55);
+  --ink-soft: oklch(0.52 0.035 60);
+  --rule: oklch(0.86 0.035 78);
+  --glow: oklch(0.54 0.12 52);
+}
+
+.sanctuary[data-theme="midnight"] {
+  --paper: oklch(0.19 0.035 260);
+  --paper-raised: oklch(0.24 0.04 262);
+  --ink: oklch(0.93 0.015 250);
+  --ink-soft: oklch(0.72 0.03 255);
+  --rule: oklch(0.34 0.04 260);
+  --glow: oklch(0.78 0.11 85);
+}
+
+.sanctuary[data-theme="emerald"] {
+  --paper: oklch(0.24 0.045 165);
+  --paper-raised: oklch(0.29 0.05 166);
+  --ink: oklch(0.94 0.02 150);
+  --ink-soft: oklch(0.76 0.04 158);
+  --rule: oklch(0.38 0.05 165);
+  --glow: oklch(0.82 0.13 150);
+}
+
+@utility paper {
+  background-color: var(--paper);
+}
+@utility paper-raised {
+  background-color: var(--paper-raised);
+}
+@utility ink {
+  color: var(--ink);
+}
+@utility ink-soft {
+  color: var(--ink-soft);
+}
+@utility rule-line {
+  border-color: var(--rule);
+}
+@utility glow-text {
+  color: var(--glow);
+}
+@utility glow-bg {
+  background-color: var(--glow);
+}
+
+@utility font-literary {
+  font-family: "EB Garamond", Georgia, serif;
+}
+@utility font-editorial {
+  font-family: "Playfair Display", Georgia, serif;
+}
+@utility font-modern {
+  font-family: "Inter", system-ui, sans-serif;
+}
+@utility font-naskh {
+  font-family: "Noto Naskh Arabic", "Amiri", serif;
+}
+@utility font-amiri {
+  font-family: "Amiri", "Noto Naskh Arabic", serif;
+}
