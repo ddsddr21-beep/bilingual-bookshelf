@@ -33,7 +33,7 @@ export const Route = createFileRoute("/read")({
       },
     ],
   }),
-  component: Reader;
+  component: Reader,
 });
 
 function Reader() {
