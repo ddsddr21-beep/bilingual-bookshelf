@@ -1,0 +1,5 @@
+{
+  "name": "Bilingual Bookshelf",
+  "description": "A bilingual reading sanctuary and bookshelf application.",
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

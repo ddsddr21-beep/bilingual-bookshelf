@@ -154,6 +154,7 @@
   --ink-soft: oklch(0.5 0.03 60);
   --rule: oklch(0.86 0.03 80);
   --glow: oklch(0.55 0.11 55);
+  --glow-2: oklch(0.62 0.14 42);
   background-color: var(--paper);
   color: var(--ink);
 }
@@ -165,6 +166,7 @@
   --ink-soft: oklch(0.52 0.035 60);
   --rule: oklch(0.86 0.035 78);
   --glow: oklch(0.54 0.12 52);
+  --glow-2: oklch(0.62 0.16 38);
 }
 
 .sanctuary[data-theme="midnight"] {
@@ -174,6 +176,7 @@
   --ink-soft: oklch(0.72 0.03 255);
   --rule: oklch(0.34 0.04 260);
   --glow: oklch(0.78 0.11 85);
+  --glow-2: oklch(0.72 0.14 65);
 }
 
 .sanctuary[data-theme="emerald"] {
@@ -183,6 +186,27 @@
   --ink-soft: oklch(0.76 0.04 158);
   --rule: oklch(0.38 0.05 165);
   --glow: oklch(0.82 0.13 150);
+  --glow-2: oklch(0.75 0.15 175);
+}
+
+.sanctuary[data-theme="sand"] {
+  --paper: oklch(0.95 0.03 72);
+  --paper-raised: oklch(0.98 0.022 75);
+  --ink: oklch(0.26 0.04 42);
+  --ink-soft: oklch(0.48 0.04 45);
+  --rule: oklch(0.86 0.035 68);
+  --glow: oklch(0.58 0.16 36);
+  --glow-2: oklch(0.64 0.18 50);
+}
+
+.sanctuary[data-theme="royal"] {
+  --paper: oklch(0.18 0.045 285);
+  --paper-raised: oklch(0.23 0.055 288);
+  --ink: oklch(0.95 0.015 270);
+  --ink-soft: oklch(0.75 0.035 280);
+  --rule: oklch(0.35 0.055 285);
+  --glow: oklch(0.74 0.16 310);
+  --glow-2: oklch(0.68 0.18 280);
 }
 
 @utility paper {
@@ -206,19 +230,45 @@
 @utility glow-bg {
   background-color: var(--glow);
 }
+@utility glow-gradient {
+  background: linear-gradient(135deg, var(--glow) 0%, var(--glow-2) 100%);
+}
+@utility text-gradient {
+  background: linear-gradient(135deg, var(--ink) 20%, var(--glow) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
 
+/* English Fonts */
 @utility font-literary {
   font-family: "EB Garamond", Georgia, serif;
 }
 @utility font-editorial {
   font-family: "Playfair Display", Georgia, serif;
 }
-@utility font-modern {
-  font-family: "Inter", system-ui, sans-serif;
+@utility font-cormorant {
+  font-family: "Cormorant Garamond", Georgia, serif;
 }
+@utility font-modern {
+  font-family: "Plus Jakarta Sans", "Inter", sans-serif;
+}
+@utility font-mono {
+  font-family: "JetBrains Mono", monospace;
+}
+
+/* Arabic Fonts */
 @utility font-naskh {
   font-family: "Noto Naskh Arabic", "Amiri", serif;
 }
 @utility font-amiri {
   font-family: "Amiri", "Noto Naskh Arabic", serif;
+}
+@utility font-kufi {
+  font-family: "Reem Kufi", "Amiri", sans-serif;
+}
+@utility font-tajawal {
+  font-family: "Tajawal", "Noto Naskh Arabic", sans-serif;
+}
+@utility font-aref {
+  font-family: "Aref Ruqaa", "Amiri", serif;
 }

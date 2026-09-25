@@ -78,7 +78,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "محراب القراءة الموازية" },
-      { name: "description", content: "بيئة قراءة ورقية أنيقة للنصوص الإنجليزية مع ترجمتها العربية جنباً إلى جنب." },
+      {
+        name: "description",
+        content: "بيئة قراءة ورقية أنيقة للنصوص الإنجليزية مع ترجمتها العربية جنباً إلى جنب.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -91,7 +94,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..700;1,400&family=Playfair+Display:ital,wght@0,400..700;1,400&family=Inter:wght@400..700&family=Amiri:ital,wght@0,400;0,700;1,400&family=Noto+Naskh+Arabic:wght@400..700&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Aref+Ruqaa:wght@400;700&family=Cormorant+Garamond:ital,wght@0,400..700;1,400&family=EB+Garamond:ital,wght@0,400..700;1,400&family=Inter:wght@400..700&family=JetBrains+Mono:wght@400..600&family=Noto+Naskh+Arabic:wght@400..700&family=Playfair+Display:ital,wght@0,400..700;1,400&family=Plus+Jakarta+Sans:wght@400..700&family=Reem+Kufi:wght@400..700&family=Tajawal:wght@400;500;700&display=swap",
       },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],

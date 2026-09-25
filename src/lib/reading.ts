@@ -3,9 +3,9 @@
 export type Pair = { en: string; ar: string };
 
 export type ReaderLayout = "stacked" | "side" | "single";
-export type SanctuaryTheme = "midnight" | "parchment" | "emerald";
-export type EnFont = "literary" | "editorial" | "modern";
-export type ArFont = "naskh" | "amiri";
+export type SanctuaryTheme = "parchment" | "midnight" | "emerald" | "sand" | "royal";
+export type EnFont = "literary" | "editorial" | "cormorant" | "modern" | "mono";
+export type ArFont = "naskh" | "amiri" | "kufi" | "tajawal" | "aref";
 export type SingleSide = "en" | "ar";
 
 export type Settings = {
@@ -94,7 +94,9 @@ export function loadSettings(): Settings {
   if (typeof window === "undefined") return DEFAULT_SETTINGS;
   try {
     const raw = window.localStorage.getItem(SETTINGS_KEY);
-    return raw ? { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) } : DEFAULT_SETTINGS;
+    return raw
+      ? { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) }
+      : DEFAULT_SETTINGS;
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -108,12 +110,25 @@ export function saveSettings(settings: Settings) {
 export const EN_FONT_CLASS: Record<EnFont, string> = {
   literary: "font-literary",
   editorial: "font-editorial",
+  cormorant: "font-cormorant",
   modern: "font-modern",
+  mono: "font-mono",
 };
 
 export const AR_FONT_CLASS: Record<ArFont, string> = {
   naskh: "font-naskh",
   amiri: "font-amiri",
+  kufi: "font-kufi",
+  tajawal: "font-tajawal",
+  aref: "font-aref",
+};
+
+export const THEME_CLASS: Record<SanctuaryTheme, string> = {
+  parchment: "",
+  midnight: "dark",
+  emerald: "",
+  sand: "",
+  royal: "dark",
 };
 
 export const SAMPLE: TextDoc = {
