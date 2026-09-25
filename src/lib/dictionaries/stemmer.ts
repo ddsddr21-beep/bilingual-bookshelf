@@ -182,7 +182,6 @@ export function removeArabicDiacritics(text: string): string {
   return text
     .replace(/[\u064B-\u065F\u0670\u0640]/g, "") // remove fathah, dammah, kasrah, sukoon, shaddah, tatweel
     .replace(/[إأآٱ]/g, "ا") // normalize alef
-    .replace(/ة/g, "ه") // normalize teh marbuta
     .replace(/ى/g, "ي") // normalize alef maksura
     .trim();
 }

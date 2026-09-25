@@ -266,10 +266,14 @@ export function WordInspector({ target, onClose }: Props) {
                   </div>
 
                   {entry.contextExplanation && (
-                    <p className="font-naskh text-xs ink-soft leading-relaxed border-t rule-line pt-2">
-                      <span className="font-bold ink">الشرح السياقي: </span>
-                      {entry.contextExplanation}
-                    </p>
+                    <div className="pt-2 border-t rule-line space-y-1">
+                      <span className="font-naskh text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                        ملاحظة سياقية من الذكاء الاصطناعي (خاصة بموضع النص):
+                      </span>
+                      <p className="font-naskh text-xs ink-soft leading-relaxed">
+                        {entry.contextExplanation}
+                      </p>
+                    </div>
                   )}
 
                   {/* Current Reading Sentence as Text Context (Not Lexical Example) */}
@@ -332,7 +336,7 @@ export function WordInspector({ target, onClose }: Props) {
                 {entry.meanings.length === 0 ? (
                   <div className="p-4 rounded-2xl bg-[var(--paper)] border rule-line text-center space-y-1.5">
                     <span className="font-naskh text-xs font-bold text-amber-700 dark:text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20 inline-block">
-                      لا توجد بيانات محلية
+                      لا توجد بيانات معجمية محلية
                     </span>
                     <p className="font-naskh text-xs ink-soft">
                       لم يتم العثور على مدخل معجمي مسجل لهذه المفردة في قواعد بيانات WordNet أو

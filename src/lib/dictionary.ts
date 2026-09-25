@@ -40,7 +40,7 @@ export type SentenceContextParam = {
   contextSentencesEn?: string[];
 };
 
-const CACHE_KEY = "mihrab.lexicon_v12_pure_authentic_local";
+const CACHE_KEY = "mihrab.lexicon_v15_pure_wordnet_wiktextract";
 
 /** Clean & normalize token (keep English letters, Arabic letters, hyphens, and apostrophes) */
 export function cleanWord(raw: string): string {
@@ -48,6 +48,16 @@ export function cleanWord(raw: string): string {
   return raw
     .replace(/[^\w\s\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF'-]/g, "")
     .trim();
+}
+
+/** Generate context-aware cache key to ensure different sentence contexts never collide */
+export function getContextCacheKey(word: string, context?: SentenceContextParam): string {
+  if (context?.currentSentenceAr && context?.currentSentenceEn) {
+    const arSnippet = cleanWord(context.currentSentenceAr).slice(0, 30);
+    const enSnippet = cleanWord(context.currentSentenceEn).slice(0, 30);
+    return `ctx::${word.toLowerCase()}::${arSnippet}::${enSnippet}`;
+  }
+  return `word::${word.toLowerCase()}`;
 }
 
 /** Get persistent local dictionary cache */
@@ -62,15 +72,11 @@ export function getLocalCache(): Record<string, WordReferenceEntry> {
 }
 
 /** Save entry to persistent local dictionary cache */
-export function saveToLocalCache(entry: WordReferenceEntry) {
+export function saveToLocalCache(key: string, entry: WordReferenceEntry) {
   if (typeof window === "undefined") return;
   try {
     const cache = getLocalCache();
-    const key = entry.word.toLowerCase();
     cache[key] = entry;
-    if (entry.targetEnglishWord && entry.targetEnglishWord.toLowerCase() !== key) {
-      cache[entry.targetEnglishWord.toLowerCase()] = entry;
-    }
     window.localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
   } catch {
     // quota exceeded
@@ -327,24 +333,29 @@ export async function getWordReferenceEntry(
     };
   }
 
-  // 1. If sentence context is provided, ALWAYS run Contextual Resolution first (do not return stale cache)
-  if (context?.currentSentenceAr && context?.currentSentenceEn) {
-    const aiEntry = await executePath1AiContext(word, context);
-    if (aiEntry) {
+  const hasContext = !!(context?.currentSentenceAr && context?.currentSentenceEn);
+  const cacheKey = getContextCacheKey(word, context);
+  const cache = getLocalCache();
+
+  // 1. If sentence context is provided, ALWAYS run Contextual AI Resolution first.
+  // We NEVER return old cache before attempting contextual resolution!
+  if (hasContext) {
+    const aiEntry = await executePath1AiContext(word, context!);
+    if (aiEntry && aiEntry.contextualEnglishWord) {
+      saveToLocalCache(cacheKey, aiEntry);
       return aiEntry;
+    }
+    // If AI fails to determine counterpart, transition cleanly to local morphological analysis
+  } else {
+    // Only check cache when there is NO sentence context (offline mode)
+    if (cache[cacheKey]) {
+      return cache[cacheKey]!;
     }
   }
 
-  // 2. Offline / No-context path: Check local persistent cache
-  const cache = getLocalCache();
-  const cacheKey = word.toLowerCase();
-  if (cache[cacheKey]) {
-    return cache[cacheKey]!;
-  }
-
-  // 3. Fallback to local offline morphological analysis (Farahidi + FreeDict + WordNet)
+  // 2. Fallback to local offline morphological analysis (Farahidi + FreeDict + WordNet + Wiktextract)
   const offlineEntry = executePath2LocalMorphology(word);
-  saveToLocalCache(offlineEntry);
+  saveToLocalCache(cacheKey, offlineEntry);
   return offlineEntry;
 }
 
@@ -439,7 +450,8 @@ export async function preloadDocVocabulary(pairs: Array<{ en: string; ar: string
   const warmUp = () => {
     wordsToWarm.forEach((w) => {
       const entry = executePath2LocalMorphology(w);
-      saveToLocalCache(entry);
+      const key = getContextCacheKey(w);
+      saveToLocalCache(key, entry);
     });
   };
 
