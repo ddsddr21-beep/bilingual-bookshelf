@@ -257,6 +257,73 @@ export const WIKTEXTRACT_DATA: Record<string, WiktextractEntry> = {
       },
     ],
   },
+  discipline: {
+    word: "discipline",
+    phonetic: "/ˈdɪs.ə.plɪn/",
+    etymology:
+      "From Old French descepline, from Latin disciplīna (“instruction, training, knowledge”).",
+    senses: [
+      {
+        pos: "noun",
+        definition: "The practice of training people or oneself to obey rules or codes of conduct.",
+        arabicTranslation: "انضباط / سيطرة ذاتية وحزم",
+        arabicDefinition: "الالتزام بالنظام والقواعد ومجاهدة النفس على التقيد بالسلوك القويم.",
+        examples: [
+          "Discipline transforms intentions into enduring results.",
+          "Daily reading requires intellectual discipline.",
+        ],
+        synonyms: ["self-control", "orderliness", "regulation"],
+      },
+    ],
+  },
+  productive: {
+    word: "productive",
+    phonetic: "/prəˈdʌk.tɪv/",
+    etymology: "From Medieval Latin prōductīvus, from Latin prōdūcere (“to bring forth, produce”).",
+    senses: [
+      {
+        pos: "adjective",
+        definition: "Yielding favorable or useful results; constructive.",
+        arabicTranslation: "مُنْتِج / مثمر وذو نفع كبير",
+        arabicDefinition: "ما كان ذا نفع وعائد إيجابي ومردود ملموس على الجهد والوقت.",
+        examples: [
+          "Careful study makes time profoundly productive.",
+          "A productive mind focuses on what can be achieved.",
+        ],
+        synonyms: ["fruitful", "efficient", "constructive"],
+      },
+    ],
+  },
+  productivity: {
+    word: "productivity",
+    phonetic: "/ˌproʊ.dʌkˈtɪv.ə.t̬i/",
+    etymology: "From productive + -ity.",
+    senses: [
+      {
+        pos: "noun",
+        definition: "The state or quality of being productive; effectiveness of effort.",
+        arabicTranslation: "الإنتاجية / كفاءة العمل ومعدل الإنجاز",
+        arabicDefinition: "مستوى الكفاءة في تحويل الموارد والجهد إلى نتائج وثمار ملموسة.",
+        examples: ["Focus and discipline multiply personal productivity."],
+        synonyms: ["output", "yield", "efficiency"],
+      },
+    ],
+  },
+  sustainable: {
+    word: "sustainable",
+    phonetic: "/səˈsteɪ.nə.bəl/",
+    etymology: "From sustain + -able.",
+    senses: [
+      {
+        pos: "adjective",
+        definition: "Able to be maintained at a certain rate or level without exhaustion.",
+        arabicTranslation: "مستدام / قابل للبقاء والاستمرار",
+        arabicDefinition: "القادر على الدوام والاستمرار دون إنهاك للموارد أو تضييع للطاقة.",
+        examples: ["Consistent daily effort creates a sustainable routine."],
+        synonyms: ["maintainable", "durable", "viable"],
+      },
+    ],
+  },
 };
 
 /** Look up an English lemma in Wiktextract */

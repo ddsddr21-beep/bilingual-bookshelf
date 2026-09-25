@@ -652,8 +652,8 @@ function InteractiveText({
     const contextAr: string[] = [];
     const contextEn: string[] = [];
 
-    // Collect up to 2 previous sentences
-    for (let i = Math.max(0, pairIndex - 2); i < pairIndex; i++) {
+    // Collect up to 3 previous sentences (Requirement 7: 3 before + 1 current + 3 after)
+    for (let i = Math.max(0, pairIndex - 3); i < pairIndex; i++) {
       if (allPairs[i]) {
         contextAr.push(allPairs[i]!.ar);
         contextEn.push(allPairs[i]!.en);
@@ -664,8 +664,8 @@ function InteractiveText({
     contextAr.push(currentPair.ar);
     contextEn.push(currentPair.en);
 
-    // Collect up to 2 next sentences
-    for (let i = pairIndex + 1; i <= Math.min(allPairs.length - 1, pairIndex + 2); i++) {
+    // Collect up to 3 next sentences (Requirement 7: 3 before + 1 current + 3 after)
+    for (let i = pairIndex + 1; i <= Math.min(allPairs.length - 1, pairIndex + 3); i++) {
       if (allPairs[i]) {
         contextAr.push(allPairs[i]!.ar);
         contextEn.push(allPairs[i]!.en);

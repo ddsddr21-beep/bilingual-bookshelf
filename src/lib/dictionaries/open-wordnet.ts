@@ -414,6 +414,76 @@ export const OPEN_WORDNET_DATA: Record<string, WordNetEntry> = {
       },
     ],
   },
+  discipline: {
+    lemma: "discipline",
+    senses: [
+      {
+        pos: "noun",
+        definition: "Training that produces orderliness, self-control, and adherence to rules.",
+        arabicGloss: "الانضباط وحفظ النظام والتحكم الذاتي الصارم.",
+        synonyms: ["self-control", "orderliness", "regulation", "drill"],
+        examples: [
+          "Mental and physical discipline is necessary for mastery.",
+          "Military discipline requires absolute obedience and focus.",
+        ],
+      },
+      {
+        pos: "verb",
+        definition: "Train someone or oneself to obey rules or a code of behavior.",
+        arabicGloss: "يدرب أو يهذب السلوك والنفس لالتزام النظام.",
+        synonyms: ["train", "condition", "drill"],
+        examples: ["He disciplined himself to read every evening."],
+      },
+    ],
+  },
+  productive: {
+    lemma: "productive",
+    senses: [
+      {
+        pos: "adjective",
+        definition:
+          "Producing or capable of producing large amounts of goods, or yielding favorable, effective results.",
+        arabicGloss: "مُنْتِج / مثمر وذو مردود وفير ونافع.",
+        synonyms: ["fruitful", "fertile", "prolific", "efficient", "generative"],
+        examples: [
+          "The team spent a highly productive afternoon planning the next steps.",
+          "Productive habits lead to significant long-term achievements.",
+        ],
+      },
+    ],
+  },
+  productivity: {
+    lemma: "productivity",
+    senses: [
+      {
+        pos: "noun",
+        definition:
+          "The state or quality of being productive; the effectiveness of productive effort, especially measured in terms of the rate of output per unit of input.",
+        arabicGloss: "الإنتاجية / كفاءة ومعدل الإنجاز والإنتاج.",
+        synonyms: ["productiveness", "yield", "output", "efficiency"],
+        examples: [
+          "Technological innovation contributed to higher productivity across all sectors.",
+          "Regular rest is essential to sustain high productivity.",
+        ],
+      },
+    ],
+  },
+  sustainable: {
+    lemma: "sustainable",
+    senses: [
+      {
+        pos: "adjective",
+        definition:
+          "Able to be maintained at a certain rate or level; conserving resources by avoiding depletion.",
+        arabicGloss: "مستدام / قابل للاستمرار والتجدد دون استنزاف الموارد.",
+        synonyms: ["maintainable", "renewable", "viable", "enduring"],
+        examples: [
+          "Sustainable habits preserve energy and focus for the future.",
+          "This pace of work is not sustainable in the long term without adequate recovery.",
+        ],
+      },
+    ],
+  },
 };
 
 /** Look up an English lemma in Open English WordNet */

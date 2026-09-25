@@ -1,9 +1,12 @@
 import { isArabicWord, extractContextualTargetFn } from "@/lib/ai-explain";
 import { analyzeFarahidi } from "@/lib/dictionaries/farahidi-stemmer";
 import { lookupFreeDict, FREEDICT_AR_EN } from "@/lib/dictionaries/freedict-ar-en";
-import { lookupWordNet } from "@/lib/dictionaries/open-wordnet";
-import { lookupWiktextract } from "@/lib/dictionaries/wiktextract-en";
-import { BUNDLED_LEXICON } from "@/lib/dictionaries/bundled-lexicon";
+import {
+  lookupWordNet,
+  OPEN_WORDNET_DATA,
+  type WordNetEntry,
+} from "@/lib/dictionaries/open-wordnet";
+import { lookupWiktextract, type WiktextractEntry } from "@/lib/dictionaries/wiktextract-en";
 import { lemmatizeEnglish } from "@/lib/dictionaries/stemmer";
 
 export type WordMeaningSense = {
@@ -11,7 +14,7 @@ export type WordMeaningSense = {
   arabicTranslation: string; // The Arabic meaning associated with this English sense
   englishDefinition: string; // From WordNet or Wiktextract
   arabicDefinition: string; // Arabic explanation from local lexicographical data
-  examples: string[]; // Real usage examples (deduplicated)
+  examples: string[]; // Real usage examples from WordNet/Wiktextract (deduplicated)
   synonyms: string[];
   etymology?: string;
 };
@@ -37,7 +40,7 @@ export type SentenceContextParam = {
   contextSentencesEn?: string[];
 };
 
-const CACHE_KEY = "mihrab.lexicon_v9_farahidi_wordnet";
+const CACHE_KEY = "mihrab.lexicon_v12_pure_authentic_local";
 
 /** Clean & normalize token (keep English letters, Arabic letters, hyphens, and apostrophes) */
 export function cleanWord(raw: string): string {
@@ -94,11 +97,13 @@ export function deduplicateExamples(examples: string[]): string[] {
 
 /**
  * Local Lexical Aggregator:
- * Queries Open English WordNet + Wiktextract + Bundled Lexicon for a given English lemma.
+ * Queries ONLY authentic Open English WordNet + Local Wiktextract for a given English lemma.
  * Extracts authentic definitions, Arabic meanings, and deduplicated examples.
+ * Never invents or generates fallback definitions.
  */
 export function queryLocalEnglishDatabases(lemma: string): {
   senses: WordMeaningSense[];
+  matchedLemma: string;
   phonetic?: string;
   etymology?: string;
 } {
@@ -108,28 +113,23 @@ export function queryLocalEnglishDatabases(lemma: string): {
     candidates.unshift(cleanLemma);
   }
 
-  let wordnet = null;
-  let wiktextract = null;
-  let bundled = null;
+  let wordnet: WordNetEntry | null = null;
+  let wiktextract: WiktextractEntry | null = null;
+  let matchedLemma = cleanLemma;
 
   for (const c of candidates) {
     const wn = lookupWordNet(c);
     const wx = lookupWiktextract(c);
-    const bd = BUNDLED_LEXICON[c];
-    if (
-      (wn && wn.senses.length > 0) ||
-      (wx && wx.senses.length > 0) ||
-      (bd && bd.meanings.length > 0)
-    ) {
+    if ((wn && wn.senses.length > 0) || (wx && wx.senses.length > 0)) {
       wordnet = wn;
       wiktextract = wx;
-      bundled = bd;
+      matchedLemma = c;
       break;
     }
   }
 
-  const phonetic = wiktextract?.phonetic || bundled?.phonetic;
-  const etymology = wiktextract?.etymology || bundled?.meanings[0]?.etymology;
+  const phonetic = wiktextract?.phonetic;
+  const etymology = wiktextract?.etymology;
 
   const senses: WordMeaningSense[] = [];
 
@@ -140,11 +140,6 @@ export function queryLocalEnglishDatabases(lemma: string): {
       if (wiktextract?.senses) {
         wiktextract.senses.forEach((ws) => {
           allExamples.push(...ws.examples);
-        });
-      }
-      if (bundled?.meanings) {
-        bundled.meanings.forEach((bm) => {
-          if (bm.exampleEn) allExamples.push(bm.exampleEn);
         });
       }
 
@@ -167,7 +162,7 @@ export function queryLocalEnglishDatabases(lemma: string): {
     });
   }
 
-  // 2. If not in WordNet, try Wiktextract
+  // 2. From Wiktextract (if not in WordNet)
   if (senses.length === 0 && wiktextract && wiktextract.senses.length > 0) {
     wiktextract.senses.forEach((ws) => {
       senses.push({
@@ -188,28 +183,13 @@ export function queryLocalEnglishDatabases(lemma: string): {
     });
   }
 
-  // 3. If still empty, try Bundled Lexicon
-  if (senses.length === 0 && bundled && bundled.meanings.length > 0) {
-    bundled.meanings.forEach((bm) => {
-      const examples: string[] = [];
-      if (bm.exampleEn) examples.push(bm.exampleEn);
-      senses.push({
-        partOfSpeech: bm.partOfSpeech,
-        arabicTranslation: bm.arabicTranslation,
-        englishDefinition: bm.englishDefinition,
-        arabicDefinition: bm.arabicDefinition,
-        examples: deduplicateExamples(examples),
-        synonyms: bm.synonyms || [],
-        etymology: bm.etymology || etymology,
-      });
-    });
-  }
-
-  return { senses, phonetic, etymology };
+  return { senses, matchedLemma, phonetic, etymology };
 }
 
 /**
  * PATH 1: AI-Powered Contextual Determination + Local Lexicographical Lookup
+ * AI ONLY determines the contextual English counterpart and lemma in the parallel text.
+ * Lexical definitions and examples are retrieved solely from WordNet/Wiktextract.
  */
 async function executePath1AiContext(
   word: string,
@@ -238,34 +218,15 @@ async function executePath1AiContext(
     const targetLemma =
       aiResult.englishLemma || lemmatizeEnglish(targetEnglish)[0] || targetEnglish;
 
-    // Look up in local lexicographical databases
+    // Look up in authentic local lexicographical databases (WordNet + Wiktextract)
     const localData = queryLocalEnglishDatabases(targetLemma);
-    const freedictMatch = lookupFreeDict(targetEnglish) || lookupFreeDict(targetLemma);
-
-    const meanings =
-      localData.senses.length > 0
-        ? localData.senses
-        : [
-            {
-              partOfSpeech: "مفردة سياقية (Contextual Lexical Item)",
-              arabicTranslation: targetEnglish,
-              englishDefinition: `Contextual translation equivalent "${targetEnglish}".`,
-              arabicDefinition:
-                aiResult.explanation ||
-                freedictMatch?.arExplanation ||
-                `المقابل السياقي في النص الموازي.`,
-              examples: [context.currentSentenceEn || `Contextual usage of "${targetEnglish}".`],
-              synonyms: freedictMatch?.translations || [targetEnglish],
-              etymology: localData.etymology,
-            },
-          ];
 
     return {
       word,
       targetEnglishWord: targetLemma,
       contextualEnglishWord: targetEnglish,
       phonetic: localData.phonetic,
-      meanings,
+      meanings: localData.senses, // Genuine local data only; empty array if not in local sources
       sourceMode: "ai_context_with_local_lexicon",
       sourceLabel:
         "المقابل محدد سياقياً بالذكاء الاصطناعي • المعاني من WordNet و Wiktextract المحلية",
@@ -280,6 +241,7 @@ async function executePath1AiContext(
 
 /**
  * PATH 2: Offline Farahidi Morphological Analysis + FreeDict + Open WordNet + Wiktextract
+ * Operates 100% offline without network calls or synthetic fallbacks.
  */
 export function executePath2LocalMorphology(rawWord: string): WordReferenceEntry {
   const isAr = isArabicWord(rawWord);
@@ -291,9 +253,7 @@ export function executePath2LocalMorphology(rawWord: string): WordReferenceEntry
 
     // 2. FreeDict Arabic -> English lookup
     const freedictMatch = lookupFreeDict(primaryLemma) || lookupFreeDict(rawWord);
-    const candidateTranslations: string[] = freedictMatch
-      ? freedictMatch.translations
-      : [primaryLemma];
+    const candidateTranslations: string[] = freedictMatch ? freedictMatch.translations : [];
 
     // 3. Multi-candidate local WordNet & Wiktextract analysis
     const combinedMeanings: WordMeaningSense[] = [];
@@ -322,21 +282,7 @@ export function executePath2LocalMorphology(rawWord: string): WordReferenceEntry
       arabicLemma: primaryLemma,
       candidateTranslations,
       phonetic: primaryPhonetic,
-      meanings:
-        combinedMeanings.length > 0
-          ? combinedMeanings
-          : [
-              {
-                partOfSpeech: "جذر عربي (Farahidi Lemma)",
-                arabicTranslation: candidateTranslations.join(" / "),
-                englishDefinition: `Arabic root and lemma: "${primaryLemma}". Potential English equivalents: ${candidateTranslations.join(", ")}.`,
-                arabicDefinition:
-                  freedictMatch?.arExplanation ||
-                  `التحليل الصرفي: الجذر الأساسي هو "${primaryLemma}".`,
-                examples: [],
-                synonyms: candidateTranslations,
-              },
-            ],
+      meanings: combinedMeanings, // Genuine local data only; empty array if not found
       sourceMode: "local_farahidi_freedict_wordnet",
       sourceLabel: "المسار المحلي: فراهيدي (Farahidi) + FreeDict + WordNet + Wiktextract",
       timestamp: Date.now(),
@@ -344,32 +290,15 @@ export function executePath2LocalMorphology(rawWord: string): WordReferenceEntry
   }
 
   // If English word clicked
-  const lemmas = lemmatizeEnglish(rawWord);
-  const targetLemma = lemmas[lemmas.length - 1] || rawWord;
-  const localData = queryLocalEnglishDatabases(targetLemma);
+  const localData = queryLocalEnglishDatabases(rawWord);
+  const targetLemma = localData.matchedLemma || rawWord;
   const freedictMatch = lookupFreeDict(rawWord) || lookupFreeDict(targetLemma);
-
-  const meanings =
-    localData.senses.length > 0
-      ? localData.senses
-      : [
-          {
-            partOfSpeech: "مفردة معجمية (Lexical entry)",
-            arabicTranslation: freedictMatch ? freedictMatch.arLemma : rawWord,
-            englishDefinition: `Lexical term "${rawWord}" in English lexica.`,
-            arabicDefinition:
-              freedictMatch?.arExplanation || `مفردة إنجليزية مسجلة في المصادر المحلية.`,
-            examples: [`Example usage of "${rawWord}".`],
-            synonyms: freedictMatch?.translations || [targetLemma],
-            etymology: localData.etymology,
-          },
-        ];
 
   return {
     word: rawWord,
     targetEnglishWord: targetLemma,
     phonetic: localData.phonetic,
-    meanings,
+    meanings: localData.senses, // Genuine local data only; empty array if not found
     candidateTranslations: freedictMatch?.translations || [targetLemma],
     sourceMode: "local_farahidi_freedict_wordnet",
     sourceLabel: "المسار المحلي: Open English WordNet + Wiktextract + FreeDict",
@@ -380,6 +309,7 @@ export function executePath2LocalMorphology(rawWord: string): WordReferenceEntry
 /**
  * Main Entry Point:
  * Orchestrates Path 1 (AI Contextual + Local Lexicon) with seamless fallback to Path 2 (Farahidi + FreeDict + WordNet)
+ * Never returns stale cache when context is present.
  */
 export async function getWordReferenceEntry(
   rawWord: string,
@@ -390,39 +320,29 @@ export async function getWordReferenceEntry(
     return {
       word: rawWord,
       targetEnglishWord: rawWord,
-      meanings: [
-        {
-          partOfSpeech: "غير متاح",
-          arabicTranslation: "يرجى اختيار كلمة صالحة",
-          englishDefinition: "Invalid token input",
-          arabicDefinition: "رمز أو مفردة غير صالحة للبحث المعجمي.",
-          examples: [],
-          synonyms: [],
-        },
-      ],
+      meanings: [],
       sourceMode: "local_farahidi_freedict_wordnet",
       sourceLabel: "المسار المحلي",
       timestamp: Date.now(),
     };
   }
 
-  // 1. Check local persistent cache
+  // 1. If sentence context is provided, ALWAYS run Contextual Resolution first (do not return stale cache)
+  if (context?.currentSentenceAr && context?.currentSentenceEn) {
+    const aiEntry = await executePath1AiContext(word, context);
+    if (aiEntry) {
+      return aiEntry;
+    }
+  }
+
+  // 2. Offline / No-context path: Check local persistent cache
   const cache = getLocalCache();
   const cacheKey = word.toLowerCase();
   if (cache[cacheKey]) {
     return cache[cacheKey]!;
   }
 
-  // 2. PATH 1: If sentence context is provided and AI is available, try Contextual Determination
-  if (context?.currentSentenceAr && context?.currentSentenceEn) {
-    const aiEntry = await executePath1AiContext(word, context);
-    if (aiEntry) {
-      saveToLocalCache(aiEntry);
-      return aiEntry;
-    }
-  }
-
-  // 3. PATH 2: Offline Farahidi Morphological Analysis + FreeDict + WordNet + Wiktextract
+  // 3. Fallback to local offline morphological analysis (Farahidi + FreeDict + WordNet)
   const offlineEntry = executePath2LocalMorphology(word);
   saveToLocalCache(offlineEntry);
   return offlineEntry;
@@ -450,101 +370,112 @@ export async function preloadDocVocabulary(pairs: Array<{ en: string; ar: string
     "their",
     "they",
     "them",
-    "what",
-    "which",
-    "who",
-    "when",
-    "where",
-    "why",
-    "how",
-    "will",
-    "would",
+    "she",
+    "her",
+    "him",
+    "his",
+    "you",
+    "your",
+    "our",
+    "are",
+    "can",
     "could",
-    "should",
-    "than",
-    "then",
-    "into",
-    "over",
-    "after",
-    "also",
-    "some",
-    "other",
-    "about",
+    "would",
+    "shall",
+    "will",
+    "may",
+    "might",
+    "في",
+    "من",
+    "على",
+    "إلى",
+    "عن",
+    "مع",
+    "هذا",
+    "هذه",
+    "تلك",
+    "ذلك",
+    "كان",
+    "كانت",
+    "يكون",
+    "تكون",
+    "أن",
+    "إن",
+    "ما",
+    "لا",
+    "لم",
+    "لن",
+    "ثم",
+    "أو",
+    "هو",
+    "هي",
+    "هم",
+    "هن",
   ]);
 
-  const wordCountMap = new Map<string, number>();
+  const wordsToWarm: string[] = [];
 
-  pairs.forEach((pair) => {
-    if (!pair.en) return;
-    const tokens = pair.en.split(/\s+/);
-    tokens.forEach((raw) => {
-      const clean = cleanWord(raw).toLowerCase();
-      if (clean.length >= 3 && !stopWords.has(clean) && !isArabicWord(clean)) {
-        wordCountMap.set(clean, (wordCountMap.get(clean) || 0) + 1);
+  for (const pair of pairs.slice(0, 15)) {
+    const enTokens = pair.en.split(/\s+/).map(cleanWord).filter(Boolean);
+    const arTokens = pair.ar.split(/\s+/).map(cleanWord).filter(Boolean);
+
+    enTokens.forEach((t) => {
+      const lower = t.toLowerCase();
+      if (lower.length > 3 && !stopWords.has(lower) && !wordsToWarm.includes(lower)) {
+        wordsToWarm.push(lower);
       }
     });
-  });
 
-  const topWords = Array.from(wordCountMap.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 15)
-    .map(([w]) => w);
+    arTokens.forEach((t) => {
+      if (t.length > 2 && !stopWords.has(t) && !wordsToWarm.includes(t)) {
+        wordsToWarm.push(t);
+      }
+    });
 
-  const cache = getLocalCache();
-  const uncached = topWords.filter((w) => !cache[w]);
+    if (wordsToWarm.length >= 25) break;
+  }
 
-  for (const w of uncached) {
-    getWordReferenceEntry(w).catch(() => null);
+  // Warm up offline entries in cache in idle time
+  const warmUp = () => {
+    wordsToWarm.forEach((w) => {
+      const entry = executePath2LocalMorphology(w);
+      saveToLocalCache(entry);
+    });
+  };
+
+  if ("requestIdleCallback" in window) {
+    (window as Window & { requestIdleCallback: (cb: () => void) => void }).requestIdleCallback(
+      warmUp,
+    );
+  } else {
+    setTimeout(warmUp, 1000);
   }
 }
 
-/** Search through all available cached and local entries */
-export function searchLexiconEntries(query: string): WordReferenceEntry[] {
-  const q = cleanWord(query).toLowerCase();
-  const cache = getLocalCache();
+/** Search authentic local entries (WordNet & FreeDict) matching a prefix or query */
+export function searchLexiconEntries(
+  query: string,
+): Array<{ word: string; targetEnglishWord?: string }> {
+  const clean = cleanWord(query).toLowerCase();
+  if (!clean || clean.length < 2) return [];
 
-  const combinedMap: Record<string, WordReferenceEntry> = {};
+  const results: Array<{ word: string; targetEnglishWord?: string }> = [];
 
-  // Load from FreeDict
-  Object.entries(FREEDICT_AR_EN).forEach(([arKey, fd]) => {
-    combinedMap[`fd_${arKey}`] = {
-      word: arKey,
-      targetEnglishWord: fd.translations[0] || arKey,
-      arabicLemma: fd.arLemma,
-      candidateTranslations: fd.translations,
-      meanings: [
-        {
-          partOfSpeech: fd.pos,
-          arabicTranslation: fd.translations.join(" / "),
-          englishDefinition: `English candidates: ${fd.translations.join(", ")}`,
-          arabicDefinition: fd.arExplanation,
-          examples: [],
-          synonyms: fd.translations,
-        },
-      ],
-      sourceMode: "local_farahidi_freedict_wordnet",
-      sourceLabel: "FreeDict Arabic -> English",
-      timestamp: Date.now(),
-    };
-  });
+  // 1. Search Open WordNet lemmas
+  for (const key of Object.keys(OPEN_WORDNET_DATA)) {
+    if (key.startsWith(clean)) {
+      results.push({ word: key, targetEnglishWord: key });
+      if (results.length >= 8) return results;
+    }
+  }
 
-  // Merge cache
-  Object.assign(combinedMap, cache);
+  // 2. Search FreeDict Arabic lemmas
+  for (const [arKey, entry] of Object.entries(FREEDICT_AR_EN)) {
+    if (arKey.startsWith(clean)) {
+      results.push({ word: arKey, targetEnglishWord: entry.translations[0] });
+      if (results.length >= 8) return results;
+    }
+  }
 
-  if (!q) return Object.values(combinedMap);
-
-  return Object.values(combinedMap).filter(
-    (e) =>
-      e.word.toLowerCase().includes(q) ||
-      (e.targetEnglishWord && e.targetEnglishWord.toLowerCase().includes(q)) ||
-      (e.arabicLemma && e.arabicLemma.toLowerCase().includes(q)) ||
-      (e.candidateTranslations &&
-        e.candidateTranslations.some((c) => c.toLowerCase().includes(q))) ||
-      e.meanings.some(
-        (m) =>
-          m.arabicTranslation.toLowerCase().includes(q) ||
-          m.englishDefinition.toLowerCase().includes(q) ||
-          m.arabicDefinition.toLowerCase().includes(q),
-      ),
-  );
+  return results;
 }

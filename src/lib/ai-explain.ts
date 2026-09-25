@@ -16,17 +16,18 @@ export function isArabicWord(str: string): boolean {
 }
 
 /**
- * Server Function: Extracts the contextual counterpart using Gemini from 5-sentence bilingual window.
- * AI's ONLY role is identifying the exact English word used in the parallel translation context.
+ * Server Function: Extracts the contextual counterpart using Gemini from 7-sentence bilingual window (3 before + current + 3 after).
+ * AI's ONLY role is identifying the exact English word used in the parallel translation context and its base lemma.
+ * AI is NOT allowed to invent dictionary definitions, examples, or synonyms.
  */
 export const extractContextualTargetFn = createServerFn({ method: "POST" })
   .validator(
     (data: {
       word: string;
       currentSentenceAr: string;
-      contextSentencesAr?: string[]; // 2 before, current, 2 after
+      contextSentencesAr?: string[]; // 3 before, current, 3 after
       currentSentenceEn: string;
-      contextSentencesEn?: string[]; // 2 before, current, 2 after
+      contextSentencesEn?: string[]; // 3 before, current, 3 after
     }) => data,
   )
   .handler(async ({ data }) => {

@@ -3,6 +3,8 @@
  * Provides multi-candidate English translation mappings for Arabic lemmas and roots.
  */
 
+import { normalizeArabic } from "./farahidi-stemmer";
+
 export type FreeDictEntry = {
   arLemma: string;
   pos: string;
@@ -221,16 +223,23 @@ export const FREEDICT_AR_EN: Record<string, FreeDictEntry> = {
     translations: ["amount", "measure", "destiny", "fate", "degree"],
     arExplanation: "المقدار والكمية أو الشأن والمكانة.",
   },
+  ضبط: {
+    arLemma: "ضبط",
+    pos: "فعل / مصدر",
+    translations: ["discipline", "control", "regulate", "adjust", "precision"],
+    arExplanation: "إحكام الشيء وحفظه بحزم ومنع الخلل فيه.",
+  },
+  انضباط: {
+    arLemma: "انضباط",
+    pos: "اسم / مصدر",
+    translations: ["discipline", "self-control", "orderliness", "regularity"],
+    arExplanation: "الالتزام بالنظام والقواعد والتحكم بالنفس.",
+  },
 };
 
 /** Look up an Arabic lemma in FreeDict */
 export function lookupFreeDict(arLemma: string): FreeDictEntry | null {
-  const norm = arLemma
-    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
-    .replace(/[إأآٱ]/g, "ا")
-    .replace(/ة/g, "ه")
-    .replace(/ى/g, "ي")
-    .trim();
+  const norm = normalizeArabic(arLemma);
   if (FREEDICT_AR_EN[norm]) return FREEDICT_AR_EN[norm]!;
   return null;
 }

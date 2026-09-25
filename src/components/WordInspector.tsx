@@ -271,6 +271,23 @@ export function WordInspector({ target, onClose }: Props) {
                       {entry.contextExplanation}
                     </p>
                   )}
+
+                  {/* Current Reading Sentence as Text Context (Not Lexical Example) */}
+                  {target.currentSentenceAr && target.currentSentenceEn && (
+                    <div className="pt-2 border-t rule-line space-y-1.5">
+                      <span className="font-naskh text-[10px] font-bold ink-soft">
+                        السياق الحالي في النص:
+                      </span>
+                      <div className="p-2.5 rounded-xl bg-[var(--paper-raised)] border rule-line space-y-1 text-xs">
+                        <p className="font-amiri leading-relaxed ink text-right">
+                          {target.currentSentenceAr}
+                        </p>
+                        <p className="font-editorial dir-ltr leading-relaxed ink-soft italic text-left">
+                          "{target.currentSentenceEn}"
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : entry.candidateTranslations && entry.candidateTranslations.length > 0 ? (
                 <div className="p-4 rounded-2xl bg-[var(--paper)] border rule-line space-y-2.5">
@@ -303,111 +320,123 @@ export function WordInspector({ target, onClose }: Props) {
                 </div>
               ) : null}
 
-              {/* SECTION 2: Linguistic Meaning in Arabic & English Definitions */}
+              {/* SECTION 2: Local Linguistic Meaning & Definitions (Open English WordNet & Wiktextract) */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <BookmarkCheck className="h-4 w-4 text-[var(--glow)]" />
                   <h3 className="font-amiri text-base font-bold ink">
-                    المعنى اللغوي والتعريفات (Open English WordNet & Wiktextract)
+                    التعريف المعجمي المحلي (Open English WordNet & Wiktextract)
                   </h3>
                 </div>
 
-                <div className="space-y-3.5">
-                  {entry.meanings.map((meaning, mIdx) => (
-                    <div
-                      key={mIdx}
-                      className="p-4 rounded-2xl bg-[var(--paper)] border rule-line space-y-3 transition-all hover:border-[var(--glow)]/30"
-                    >
-                      {/* POS and Arabic Translation Header */}
-                      <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b rule-line">
-                        <div className="flex items-center gap-2">
-                          <span className="font-naskh text-xs px-2.5 py-0.5 rounded-full bg-[var(--glow)]/10 text-[var(--glow)] font-bold">
-                            {meaning.partOfSpeech}
-                          </span>
-                          <span className="font-amiri text-base font-bold ink">
-                            {meaning.arabicTranslation}
-                          </span>
+                {entry.meanings.length === 0 ? (
+                  <div className="p-4 rounded-2xl bg-[var(--paper)] border rule-line text-center space-y-1.5">
+                    <span className="font-naskh text-xs font-bold text-amber-700 dark:text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20 inline-block">
+                      لا توجد بيانات محلية
+                    </span>
+                    <p className="font-naskh text-xs ink-soft">
+                      لم يتم العثور على مدخل معجمي مسجل لهذه المفردة في قواعد بيانات WordNet أو
+                      Wiktextract المحلية.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3.5">
+                    {entry.meanings.map((meaning, mIdx) => (
+                      <div
+                        key={mIdx}
+                        className="p-4 rounded-2xl bg-[var(--paper)] border rule-line space-y-3 transition-all hover:border-[var(--glow)]/30"
+                      >
+                        {/* POS and Arabic Translation Header */}
+                        <div className="flex items-center justify-between gap-2 flex-wrap pb-2 border-b rule-line">
+                          <div className="flex items-center gap-2">
+                            <span className="font-naskh text-xs px-2.5 py-0.5 rounded-full bg-[var(--glow)]/10 text-[var(--glow)] font-bold">
+                              {meaning.partOfSpeech}
+                            </span>
+                            <span className="font-amiri text-base font-bold ink">
+                              {meaning.arabicTranslation}
+                            </span>
+                          </div>
                         </div>
-                      </div>
 
-                      {/* English Definition */}
-                      <div className="space-y-1">
-                        <p className="font-naskh text-[10px] ink-soft font-medium">
-                          التعريف الإنجليزي المعجمي (WordNet Definition):
-                        </p>
-                        <p className="font-editorial dir-ltr text-sm leading-relaxed ink text-left">
-                          {meaning.englishDefinition}
-                        </p>
-                      </div>
-
-                      {/* Arabic Gloss / Definition */}
-                      {meaning.arabicDefinition && (
+                        {/* English Definition */}
                         <div className="space-y-1">
                           <p className="font-naskh text-[10px] ink-soft font-medium">
-                            المعنى والدلالة بالعربية:
+                            التعريف الإنجليزي المعجمي (WordNet Definition):
                           </p>
-                          <p className="font-naskh text-xs leading-relaxed ink-soft">
-                            {meaning.arabicDefinition}
+                          <p className="font-editorial dir-ltr text-sm leading-relaxed ink text-left">
+                            {meaning.englishDefinition}
                           </p>
                         </div>
-                      )}
 
-                      {/* Real Usage Examples from local databases */}
-                      {meaning.examples && meaning.examples.length > 0 && (
-                        <div className="space-y-1.5 pt-2 border-t rule-line">
-                          <p className="font-naskh text-[10px] ink-soft font-medium">
-                            أمثلة استخدام حقيقية (WordNet & Wiktextract):
-                          </p>
-                          <div className="space-y-1.5">
-                            {meaning.examples.map((ex, exIdx) => (
-                              <div
-                                key={exIdx}
-                                className="p-2.5 rounded-xl bg-[var(--paper-raised)] border rule-line"
-                              >
-                                <p className="font-editorial dir-ltr text-xs leading-relaxed ink italic text-left">
-                                  "{ex}"
-                                </p>
-                              </div>
-                            ))}
+                        {/* Arabic Gloss / Definition */}
+                        {meaning.arabicDefinition && (
+                          <div className="space-y-1">
+                            <p className="font-naskh text-[10px] ink-soft font-medium">
+                              المعنى والدلالة بالعربية:
+                            </p>
+                            <p className="font-naskh text-xs leading-relaxed ink-soft">
+                              {meaning.arabicDefinition}
+                            </p>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Synonyms & Semantic Relations */}
-                      {meaning.synonyms && meaning.synonyms.length > 0 && (
-                        <div className="space-y-1.5 pt-2 border-t rule-line">
-                          <p className="font-naskh text-[10px] ink-soft font-medium">
-                            المرادفات والعلاقات الدلالية:
-                          </p>
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {meaning.synonyms.map((syn, synIdx) => (
-                              <button
-                                key={synIdx}
-                                type="button"
-                                onClick={() => setCurrentWord(syn)}
-                                className="font-editorial dir-ltr text-xs px-2.5 py-1 rounded-lg border rule-line bg-[var(--paper-raised)] hover:border-[var(--glow)] hover:text-[var(--glow)] transition-colors"
-                              >
-                                {syn}
-                              </button>
-                            ))}
+                        {/* Real Usage Examples from local databases */}
+                        {meaning.examples && meaning.examples.length > 0 && (
+                          <div className="space-y-1.5 pt-2 border-t rule-line">
+                            <p className="font-naskh text-[10px] ink-soft font-medium">
+                              أمثلة استخدام حقيقية (WordNet & Wiktextract):
+                            </p>
+                            <div className="space-y-1.5">
+                              {meaning.examples.map((ex, exIdx) => (
+                                <div
+                                  key={exIdx}
+                                  className="p-2.5 rounded-xl bg-[var(--paper-raised)] border rule-line"
+                                >
+                                  <p className="font-editorial dir-ltr text-xs leading-relaxed ink italic text-left">
+                                    "{ex}"
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Etymology & Root History */}
-                      {meaning.etymology && (
-                        <div className="space-y-1 pt-2 border-t rule-line">
-                          <p className="font-naskh text-[10px] ink-soft font-medium">
-                            أصل واشتقاق اللفظة (Etymology):
-                          </p>
-                          <p className="font-editorial dir-ltr text-xs text-amber-800 dark:text-amber-200/90 italic text-left">
-                            {meaning.etymology}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                        {/* Synonyms & Semantic Relations */}
+                        {meaning.synonyms && meaning.synonyms.length > 0 && (
+                          <div className="space-y-1.5 pt-2 border-t rule-line">
+                            <p className="font-naskh text-[10px] ink-soft font-medium">
+                              المرادفات والعلاقات الدلالية:
+                            </p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {meaning.synonyms.map((syn, synIdx) => (
+                                <button
+                                  key={synIdx}
+                                  type="button"
+                                  onClick={() => setCurrentWord(syn)}
+                                  className="font-editorial dir-ltr text-xs px-2.5 py-1 rounded-lg border rule-line bg-[var(--paper-raised)] hover:border-[var(--glow)] hover:text-[var(--glow)] transition-colors"
+                                >
+                                  {syn}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Etymology & Root History */}
+                        {meaning.etymology && (
+                          <div className="space-y-1 pt-2 border-t rule-line">
+                            <p className="font-naskh text-[10px] ink-soft font-medium">
+                              أصل واشتقاق اللفظة (Etymology):
+                            </p>
+                            <p className="font-editorial dir-ltr text-xs text-amber-800 dark:text-amber-200/90 italic text-left">
+                              {meaning.etymology}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Data Provenance Footer */}
