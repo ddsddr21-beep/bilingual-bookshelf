@@ -107,11 +107,31 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="ar" dir="rtl" suppressHydrationWarning>
       <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var raw = localStorage.getItem("mihrab.settings.v1");
+                  if (raw) {
+                    var parsed = JSON.parse(raw);
+                    if (parsed && parsed.theme) {
+                      document.documentElement.setAttribute("data-theme", parsed.theme);
+                      if (parsed.theme === "midnight" || parsed.theme === "royal") {
+                        document.documentElement.classList.add("dark");
+                      }
+                    }
+                  }
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
         <HeadContent />
       </head>
-      <body>
+      <body suppressHydrationWarning>
         {children}
         <Scripts />
       </body>

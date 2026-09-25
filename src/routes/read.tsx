@@ -1,14 +1,32 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Eye, EyeOff, Settings2, Sparkles, X, Type, Sliders } from "lucide-react";
+import {
+  ArrowRight,
+  Eye,
+  EyeOff,
+  Settings2,
+  Sparkles,
+  X,
+  Type,
+  Sliders,
+  Search,
+  ChevronUp,
+  ChevronDown,
+  Filter,
+  FolderOpen,
+  Plus,
+} from "lucide-react";
 import {
   AR_FONT_CLASS,
   DEFAULT_SETTINGS,
   EN_FONT_CLASS,
+  buildPairs,
   loadDoc,
   loadSettings,
   SAMPLE,
   saveSettings,
+  saveDoc,
+  createNewAlignmentDoc,
   THEME_CLASS,
   type ArFont,
   type EnFont,
@@ -17,8 +35,9 @@ import {
   type Settings,
   type TextDoc,
 } from "@/lib/reading";
-import { cleanWord } from "@/lib/dictionary";
+import { cleanWord, preloadDocVocabulary } from "@/lib/dictionary";
 import { WordInspector, type WordTarget } from "@/components/WordInspector";
+import { AlignmentHistoryDrawer } from "@/components/AlignmentHistoryDrawer";
 
 export const Route = createFileRoute("/read")({
   head: () => ({
@@ -26,7 +45,8 @@ export const Route = createFileRoute("/read")({
       { title: "محراب القراءة الموازية" },
       {
         name: "description",
-        content: "بيئة قراءة ورقية أنيقة للنصوص الإنجليزية مع ترجمتها العربية جنباً إلى جنب.",
+        content:
+          "بيئة قراءة ورقية أنيقة للنصوص الإنجليزية مع ترجمتها العربية جنباً إلى جنب مع إمكانية البحث والقاموس التفاعلي للغتين.",
       },
     ],
   }),
@@ -34,18 +54,91 @@ export const Route = createFileRoute("/read")({
 });
 
 function ReaderComponent() {
-  const [doc, setDoc] = useState<TextDoc | null>(null);
+  const [doc, setDoc] = useState<TextDoc>(SAMPLE);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [panel, setPanel] = useState(false);
+  const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [revealed, setRevealed] = useState<Record<number, boolean>>({});
   const [selectedWord, setSelectedWord] = useState<WordTarget | null>(null);
 
+  // In-paragraph search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+  const [filterMatchingOnly, setFilterMatchingOnly] = useState(false);
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+
   useEffect(() => {
-    setSettings(loadSettings());
-    setDoc(loadDoc() ?? SAMPLE);
+    const loadedDoc = loadDoc();
+    const loadedSettings = loadSettings();
+    if (loadedDoc) setDoc(loadedDoc);
+    if (loadedSettings) setSettings(loadedSettings);
   }, []);
 
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.setAttribute("data-theme", settings.theme);
+      if (settings.theme === "midnight" || settings.theme === "royal") {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
+    }
+  }, [settings.theme]);
+
   const pairs = useMemo(() => (doc ? buildPairs(doc.en, doc.ar, doc.separator) : []), [doc]);
+
+  // Pre-fetch key vocabulary in background when reading starts
+  useEffect(() => {
+    if (pairs && pairs.length > 0) {
+      preloadDocVocabulary(pairs);
+    }
+  }, [pairs]);
+
+  // Compute matching pair indices inside paragraphs
+  const matchingPairIndices = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    return pairs
+      .map((pair, idx) => {
+        const matchEn = pair.en.toLowerCase().includes(q);
+        const matchAr = pair.ar.toLowerCase().includes(q);
+        return matchEn || matchAr ? idx : -1;
+      })
+      .filter((idx) => idx !== -1);
+  }, [pairs, searchQuery]);
+
+  // Auto-scroll to currently selected match
+  const scrollToPair = (pairIndex: number) => {
+    const el = document.getElementById(`pair-${pairIndex}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  };
+
+  const handleNextMatch = () => {
+    if (matchingPairIndices.length === 0) return;
+    const nextIdx = (activeMatchIndex + 1) % matchingPairIndices.length;
+    setActiveMatchIndex(nextIdx);
+    scrollToPair(matchingPairIndices[nextIdx]);
+  };
+
+  const handlePrevMatch = () => {
+    if (matchingPairIndices.length === 0) return;
+    const prevIdx =
+      (activeMatchIndex - 1 + matchingPairIndices.length) % matchingPairIndices.length;
+    setActiveMatchIndex(prevIdx);
+    scrollToPair(matchingPairIndices[prevIdx]);
+  };
+
+  const displayedPairs = useMemo(() => {
+    if (!filterMatchingOnly || !searchQuery.trim()) {
+      return pairs.map((pair, idx) => ({ pair, originalIndex: idx }));
+    }
+    return matchingPairIndices.map((idx) => ({
+      pair: pairs[idx],
+      originalIndex: idx,
+    }));
+  }, [pairs, filterMatchingOnly, searchQuery, matchingPairIndices]);
 
   function patch(next: Partial<Settings>) {
     setSettings((prev) => {
@@ -53,6 +146,16 @@ function ReaderComponent() {
       saveSettings(updated);
       return updated;
     });
+  }
+
+  function handleSelectDoc(selected: TextDoc) {
+    saveDoc(selected);
+    setDoc(selected);
+  }
+
+  function handleCreateNewDoc() {
+    const fresh = createNewAlignmentDoc();
+    setDoc(fresh);
   }
 
   function arVisible(i: number) {
@@ -73,21 +176,45 @@ function ReaderComponent() {
       className={`sanctuary min-h-screen font-serif transition-colors duration-300 ${THEME_CLASS[settings.theme]}`}
       data-theme={settings.theme}
     >
-      <header className="sticky top-0 z-20 rule-line border-b backdrop-blur-md bg-[var(--paper)]/85 px-5 py-3.5 transition-colors">
-        <div className="mx-auto flex max-w-4xl items-center justify-between">
+      <header className="sticky top-0 z-20 rule-line border-b backdrop-blur-md bg-[var(--paper)]/90 px-5 py-3 transition-colors shadow-xs">
+        <div className="mx-auto flex max-w-4xl items-center justify-between gap-3">
           <Link
             to="/"
-            className="ink-soft hover:ink font-naskh flex items-center gap-1.5 text-xs font-semibold transition-colors"
+            className="ink-soft hover:ink font-naskh flex items-center gap-1.5 text-xs font-semibold transition-colors shrink-0"
           >
             <ArrowRight className="h-4 w-4" />
-            <span>العودة للاستوديو</span>
+            <span className="hidden sm:inline">العودة للاستوديو</span>
           </Link>
 
-          <h1 className="font-amiri ink text-base font-bold sm:text-lg tracking-wide truncate max-w-[200px] sm:max-w-xs text-center">
-            {doc?.title ?? "محراب القراءة"}
+          <h1 className="font-amiri ink text-base font-bold sm:text-lg tracking-wide truncate max-w-[180px] sm:max-w-xs text-center">
+            {doc?.title || "محراب القراءة"}
           </h1>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* History Drawer Trigger Button */}
+            <button
+              aria-label="سجل المحاذاة والنصوص"
+              onClick={() => setShowHistoryDrawer(true)}
+              title="سجل المحاذاة والنصوص المحفوظة"
+              className="p-2 rounded-xl border rule-line ink-soft hover:ink hover:bg-[var(--paper-raised)] transition-all flex items-center gap-1 text-xs"
+            >
+              <FolderOpen className="h-4 w-4 text-[var(--glow)]" />
+              <span className="font-naskh hidden md:inline font-bold">السجل</span>
+            </button>
+
+            <button
+              aria-label="البحث داخل الفقرات"
+              onClick={() => setShowSearch((prev) => !prev)}
+              title="البحث داخل الفقرات والمقاطع"
+              className={`p-2 rounded-xl border rule-line transition-all ${
+                showSearch || searchQuery
+                  ? "glow-gradient text-[var(--paper)] shadow-xs"
+                  : "ink-soft hover:ink hover:bg-[var(--paper-raised)]"
+              }`}
+            >
+              <Search className="h-4 w-4" />
+            </button>
+
             <button
               aria-label="تبديل الترجمة"
               onClick={() => patch({ revealTranslation: !settings.revealTranslation })}
@@ -111,159 +238,298 @@ function ReaderComponent() {
             </button>
           </div>
         </div>
-      </header>
 
-      <main className="mx-auto max-w-3xl px-5 pb-24 pt-6">
-        {/* Helper Hint Banner */}
-        <div className="mb-6 flex items-center gap-2.5 rounded-2xl border rule-line bg-[var(--paper-raised)]/90 p-3.5 text-xs ink-soft font-naskh shadow-xs">
-          <Sparkles className="h-4 w-4 text-[var(--glow)] shrink-0" />
-          <span>
-            اضغط على أي كلمة في النص لعرض القاموس اللغوي المضمن أو استخراج ترجمتها المباشرة من النص
-            العربي المقابل عبر الذكاء الاصطناعي.
-          </span>
-        </div>
-
-        {pairs.length === 0 ? (
-          <p className="ink-soft font-naskh text-center text-sm py-12">
-            لا يوجد نص بعد — عد إلى الاستوديو وألصق نصّيك.
-          </p>
-        ) : settings.layout === "single" ? (
-          <article style={bodyStyle} className={settings.single === "en" ? enClass : arClass}>
-            <div dir={settings.single === "en" ? "ltr" : "rtl"} className="ink space-y-6">
-              {pairs.map((pair, i) =>
-                settings.single === "en" ? (
-                  <InteractiveText
-                    key={i}
-                    text={pair.en}
-                    pairIndex={i}
-                    allPairs={pairs}
-                    onWordClick={setSelectedWord}
-                    style={bodyStyle}
-                    className="ink leading-relaxed"
-                  />
-                ) : (
-                  <p key={i} className="leading-relaxed">
-                    {pair.ar}
-                  </p>
-                ),
-              )}
-            </div>
-          </article>
-        ) : settings.layout === "side" ? (
-          <div className="space-y-7">
-            {pairs.map((pair, i) => (
-              <div key={i} className="rule-line grid grid-cols-2 gap-5 border-b pb-6 last:border-0">
-                <InteractiveText
-                  text={pair.en}
-                  pairIndex={i}
-                  allPairs={pairs}
-                  onWordClick={setSelectedWord}
-                  style={bodyStyle}
-                  className={`${enClass} ink`}
-                  dir="ltr"
+        {/* In-Paragraph Search Bar Header Extension */}
+        {(showSearch || searchQuery) && (
+          <div className="mx-auto max-w-4xl mt-3 pt-3 border-t rule-line animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+              <div className="relative flex-1">
+                <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 ink-soft" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setActiveMatchIndex(0);
+                  }}
+                  placeholder="ابحث عن كلمة بالإنجليزية أو العربية أو رمز الفاصل أينما وُجد..."
+                  className="font-naskh ink w-full rounded-2xl border rule-line bg-[var(--paper)] py-2 pr-10 pl-9 text-xs outline-none transition-all focus:border-[var(--glow)] focus:ring-2 focus:ring-[var(--glow)]/20"
                 />
-                <p
-                  onClick={() => setRevealed((r) => ({ ...r, [i]: true }))}
-                  style={bodyStyle}
-                  className={`${arClass} ${arVisible(i) ? "ink-soft" : "ink-soft opacity-0"} transition-opacity cursor-pointer`}
-                >
-                  {pair.ar}
-                </p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {pairs.map((pair, i) => (
-              <div key={i} className="group">
-                <InteractiveText
-                  text={pair.en}
-                  pairIndex={i}
-                  allPairs={pairs}
-                  onWordClick={setSelectedWord}
-                  style={bodyStyle}
-                  className={`${enClass} ink`}
-                  dir="ltr"
-                />
-                {arVisible(i) ? (
-                  <p
-                    style={{ ...bodyStyle, fontSize: `${settings.fontSize - 1}px` }}
-                    className={`${arClass} ink-soft mt-2.5 transition-colors`}
-                  >
-                    {pair.ar}
-                  </p>
-                ) : (
+                {searchQuery && (
                   <button
-                    onClick={() => setRevealed((r) => ({ ...r, [i]: true }))}
-                    className="glow-text font-naskh mt-2 text-xs underline font-semibold"
+                    onClick={() => {
+                      setSearchQuery("");
+                      setActiveMatchIndex(0);
+                    }}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 ink-soft hover:ink"
                   >
-                    إظهار الترجمة المقابلة
+                    <X className="h-3.5 w-3.5" />
                   </button>
                 )}
-                <div className="rule-line mt-6 border-b opacity-60" />
               </div>
-            ))}
+
+              {/* Match status & Controls */}
+              <div className="flex items-center justify-between sm:justify-end gap-2 font-naskh text-xs">
+                {searchQuery.trim() && (
+                  <div className="ink-soft flex items-center gap-1.5 px-2 py-1 rounded-xl bg-[var(--paper-raised)] border rule-line text-[11px]">
+                    <Sparkles className="h-3 w-3 text-[var(--glow)]" />
+                    <span>
+                      {matchingPairIndices.length > 0
+                        ? `${activeMatchIndex + 1} من ${matchingPairIndices.length} نتيجة داخل الفقرات`
+                        : "لا توجد نتائج مطابقة"}
+                    </span>
+                  </div>
+                )}
+
+                {matchingPairIndices.length > 0 && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={handlePrevMatch}
+                      title="النتيجة السابقة"
+                      className="p-1.5 rounded-lg border rule-line hover:bg-[var(--paper-raised)] ink-soft hover:ink transition-all"
+                    >
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={handleNextMatch}
+                      title="النتيجة التالية"
+                      className="p-1.5 rounded-lg border rule-line hover:bg-[var(--paper-raised)] ink-soft hover:ink transition-all"
+                    >
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => setFilterMatchingOnly((prev) => !prev)}
+                  title="تصفية وعرض النتائج المطابقة فقط"
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-xl border rule-line text-xs font-semibold transition-all ${
+                    filterMatchingOnly
+                      ? "glow-gradient text-[var(--paper)] shadow-xs"
+                      : "ink-soft hover:ink hover:bg-[var(--paper-raised)]"
+                  }`}
+                >
+                  <Filter className="h-3 w-3" />
+                  <span>تصفية النتائج</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </header>
+
+      {/* Main Content Area */}
+      <main className="mx-auto max-w-4xl px-5 py-8 pb-32">
+        {displayedPairs.length === 0 ? (
+          <div className="py-20 text-center space-y-4">
+            <Search className="h-10 w-10 mx-auto ink-soft opacity-30" />
+            <p className="font-naskh text-base ink font-semibold">
+              لا توجد مقاطع مطابقة لكلمة البحث "{searchQuery}"
+            </p>
+            <button
+              onClick={() => {
+                setSearchQuery("");
+                setFilterMatchingOnly(false);
+              }}
+              className="glow-gradient text-[var(--paper)] font-naskh text-xs px-4 py-2 rounded-xl font-bold"
+            >
+              إلغاء تصفية البحث
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {displayedPairs.map(({ pair, originalIndex }) => {
+              const active = arVisible(originalIndex);
+              const isMatch = matchingPairIndices.includes(originalIndex);
+
+              return (
+                <article
+                  key={originalIndex}
+                  id={`pair-${originalIndex}`}
+                  className={`paper-raised rule-line rounded-3xl border p-6 shadow-sm transition-all duration-300 ${
+                    isMatch ? "ring-2 ring-[var(--glow)] border-[var(--glow)]" : ""
+                  }`}
+                >
+                  {/* STACKED LAYOUT */}
+                  {settings.layout === "stacked" && (
+                    <div className="space-y-4">
+                      <div className="space-y-1">
+                        <InteractiveText
+                          text={pair.en}
+                          pairIndex={originalIndex}
+                          allPairs={pairs}
+                          onWordClick={setSelectedWord}
+                          searchQuery={searchQuery}
+                          className={`${enClass} ink leading-relaxed text-balance`}
+                          style={bodyStyle}
+                          dir="ltr"
+                        />
+                      </div>
+
+                      {active ? (
+                        <div className="border-t rule-line pt-4 animate-in fade-in duration-200">
+                          <InteractiveText
+                            text={pair.ar}
+                            pairIndex={originalIndex}
+                            allPairs={pairs}
+                            onWordClick={setSelectedWord}
+                            searchQuery={searchQuery}
+                            className={`${arClass} ink-soft leading-relaxed text-balance`}
+                            style={bodyStyle}
+                            dir="rtl"
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setRevealed((r) => ({ ...r, [originalIndex]: true }))}
+                          className="ink-soft hover:ink font-naskh text-xs flex items-center gap-1.5 border border-dashed rule-line px-3 py-1.5 rounded-xl transition-colors mt-2"
+                        >
+                          <Eye className="h-3.5 w-3.5 text-[var(--glow)]" />
+                          <span>إظهار الترجمة المقابلة</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* SIDE-BY-SIDE LAYOUT */}
+                  {settings.layout === "side" && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                      <InteractiveText
+                        text={pair.en}
+                        pairIndex={originalIndex}
+                        allPairs={pairs}
+                        onWordClick={setSelectedWord}
+                        searchQuery={searchQuery}
+                        className={`${enClass} ink leading-relaxed text-balance`}
+                        style={bodyStyle}
+                        dir="ltr"
+                      />
+
+                      {active ? (
+                        <div className="border-t md:border-t-0 md:border-r rule-line pt-4 md:pt-0 md:pr-6">
+                          <InteractiveText
+                            text={pair.ar}
+                            pairIndex={originalIndex}
+                            allPairs={pairs}
+                            onWordClick={setSelectedWord}
+                            searchQuery={searchQuery}
+                            className={`${arClass} ink-soft leading-relaxed text-balance`}
+                            style={bodyStyle}
+                            dir="rtl"
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setRevealed((r) => ({ ...r, [originalIndex]: true }))}
+                          className="ink-soft hover:ink font-naskh text-xs flex items-center gap-1.5 border border-dashed rule-line px-3 py-1.5 rounded-xl transition-colors"
+                        >
+                          <Eye className="h-3.5 w-3.5 text-[var(--glow)]" />
+                          <span>إظهار الترجمة</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* SINGLE SIDE LAYOUT */}
+                  {settings.layout === "single" && (
+                    <div className="space-y-3">
+                      {settings.single === "en" ? (
+                        <InteractiveText
+                          text={pair.en}
+                          pairIndex={originalIndex}
+                          allPairs={pairs}
+                          onWordClick={setSelectedWord}
+                          searchQuery={searchQuery}
+                          className={`${enClass} ink leading-relaxed text-balance`}
+                          style={bodyStyle}
+                          dir="ltr"
+                        />
+                      ) : (
+                        <InteractiveText
+                          text={pair.ar}
+                          pairIndex={originalIndex}
+                          allPairs={pairs}
+                          onWordClick={setSelectedWord}
+                          searchQuery={searchQuery}
+                          className={`${arClass} ink leading-relaxed text-balance`}
+                          style={bodyStyle}
+                          dir="rtl"
+                        />
+                      )}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
           </div>
         )}
       </main>
 
-      {/* Word Inspector Modal Popover */}
+      {/* Word Inspector Modal */}
       {selectedWord && (
         <WordInspector target={selectedWord} onClose={() => setSelectedWord(null)} />
       )}
 
-      {/* Settings Drawer Panel */}
+      {/* Alignment History Drawer */}
+      <AlignmentHistoryDrawer
+        isOpen={showHistoryDrawer}
+        onClose={() => setShowHistoryDrawer(false)}
+        onSelectDoc={handleSelectDoc}
+        onNewDoc={handleCreateNewDoc}
+        activeDocId={doc?.id}
+      />
+
+      {/* Settings Panel Modal */}
       {panel && (
-        <div
-          className="fixed inset-0 z-30 flex items-end bg-black/50 backdrop-blur-xs animate-in fade-in duration-200"
-          onClick={() => setPanel(false)}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs animate-in fade-in duration-150">
           <div
+            dir="rtl"
+            className="paper-raised rule-line relative w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-3xl border p-6 shadow-2xl transition-all"
             onClick={(e) => e.stopPropagation()}
-            className="paper-raised rule-line max-h-[88vh] w-full overflow-y-auto rounded-t-3xl border-t p-6 shadow-2xl transition-all"
           >
-            <div className="mb-6 flex items-center justify-between border-b rule-line pb-4">
+            <div className="flex items-center justify-between border-b rule-line pb-4 mb-5">
               <div className="flex items-center gap-2">
                 <Sliders className="h-5 w-5 text-[var(--glow)]" />
-                <h2 className="font-amiri ink text-xl font-bold">إعدادات تخصيص المِحراب</h2>
+                <h2 className="font-amiri text-xl font-bold ink">إعدادات محراب القراءة</h2>
               </div>
               <button
-                aria-label="إغلاق"
                 onClick={() => setPanel(false)}
-                className="ink-soft hover:ink p-1.5 rounded-xl border rule-line"
+                className="ink-soft hover:ink p-1.5 rounded-xl border rule-line transition-colors"
+                aria-label="إغلاق الإعدادات"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            {/* Layout Options */}
-            <Group label="تنسيق وشكل الصفحة">
+            {/* Layout Style */}
+            <Group label="نمط عرض المحاذاة">
               <Choices<ReaderLayout>
                 value={settings.layout}
                 onChange={(layout) => patch({ layout })}
                 options={[
-                  ["stacked", "متتالي (سياقي)"],
-                  ["side", "عمودين (متجاور)"],
-                  ["single", "نص واحد فقط"],
+                  ["stacked", "متتالي (مقطع تحت مقطع)"],
+                  ["side", "عمودين متوازيين"],
+                  ["single", "نص منفرد"],
                 ]}
               />
             </Group>
 
+            {/* Single Side Toggle */}
             {settings.layout === "single" && (
-              <Group label="اللغة المعروضة">
+              <Group label="اللغة المعروضة في النص المنفرد">
                 <Choices<"en" | "ar">
                   value={settings.single}
                   onChange={(single) => patch({ single })}
                   options={[
-                    ["en", "النص الإنجليزي"],
-                    ["ar", "الترجمة العربية"],
+                    ["en", "الإنجليزية فقط"],
+                    ["ar", "العربية فقط"],
                   ]}
                 />
               </Group>
             )}
 
-            {/* Theme Picker */}
-            <Group label="لون وثيم محراب القراءة">
+            {/* Themes */}
+            <Group label="ثيم الصفحة الورقية">
               <Choices<SanctuaryTheme>
                 value={settings.theme}
                 onChange={(theme) => patch({ theme })}
@@ -357,6 +623,7 @@ function InteractiveText({
   pairIndex,
   allPairs,
   onWordClick,
+  searchQuery = "",
   className,
   style,
   dir = "ltr",
@@ -365,47 +632,82 @@ function InteractiveText({
   pairIndex: number;
   allPairs: Array<{ en: string; ar: string }>;
   onWordClick: (target: WordTarget) => void;
+  searchQuery?: string;
   className?: string;
   style?: React.CSSProperties;
   dir?: string;
 }) {
-  const { englishText, arabicText } = useMemo(() => {
+  const contextData = useMemo(() => {
     const currentPair = allPairs[pairIndex];
     if (!currentPair) {
-      return { englishText: text, arabicText: "" };
+      return {
+        englishText: text,
+        arabicText: "",
+        currentSentenceAr: "",
+        currentSentenceEn: "",
+        contextSentencesAr: [],
+        contextSentencesEn: [],
+      };
     }
-    const enList: string[] = [];
-    const arList: string[] = [];
+    const contextAr: string[] = [];
+    const contextEn: string[] = [];
 
-    if (pairIndex > 0 && allPairs[pairIndex - 1]) {
-      enList.push(allPairs[pairIndex - 1]!.en);
-      arList.push(allPairs[pairIndex - 1]!.ar);
+    // Collect up to 2 previous sentences
+    for (let i = Math.max(0, pairIndex - 2); i < pairIndex; i++) {
+      if (allPairs[i]) {
+        contextAr.push(allPairs[i]!.ar);
+        contextEn.push(allPairs[i]!.en);
+      }
     }
 
-    enList.push(currentPair.en);
-    arList.push(currentPair.ar);
+    // Current sentence
+    contextAr.push(currentPair.ar);
+    contextEn.push(currentPair.en);
 
-    if (pairIndex < allPairs.length - 1 && allPairs[pairIndex + 1]) {
-      enList.push(allPairs[pairIndex + 1]!.en);
-      arList.push(allPairs[pairIndex + 1]!.ar);
+    // Collect up to 2 next sentences
+    for (let i = pairIndex + 1; i <= Math.min(allPairs.length - 1, pairIndex + 2); i++) {
+      if (allPairs[i]) {
+        contextAr.push(allPairs[i]!.ar);
+        contextEn.push(allPairs[i]!.en);
+      }
     }
 
     return {
-      englishText: enList.join(" "),
-      arabicText: arList.join(" "),
+      englishText: contextEn.join(" "),
+      arabicText: contextAr.join(" "),
+      currentSentenceAr: currentPair.ar,
+      currentSentenceEn: currentPair.en,
+      contextSentencesAr: contextAr,
+      contextSentencesEn: contextEn,
     };
   }, [pairIndex, allPairs, text]);
 
+  // Tokenize supporting English and Arabic letter ranges
   const tokens = useMemo(() => {
-    return text.split(/(\s+|[^\w\s'-]+)/);
+    return text.split(
+      /(\s+|[^\w\s\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF'-]+)/,
+    );
   }, [text]);
+
+  const cleanQuery = searchQuery.trim().toLowerCase();
 
   return (
     <p dir={dir} style={style} className={className}>
       {tokens.map((token, idx) => {
         const clean = cleanWord(token);
+        const isMatch = cleanQuery && token.toLowerCase().includes(cleanQuery);
+
         if (!clean) {
-          return <span key={idx}>{token}</span>;
+          return (
+            <span
+              key={idx}
+              className={
+                isMatch ? "bg-[var(--glow)]/30 text-[var(--glow)] font-bold rounded px-0.5" : ""
+              }
+            >
+              {token}
+            </span>
+          );
         }
 
         return (
@@ -417,12 +719,20 @@ function InteractiveText({
                 word: token,
                 clean,
                 pairIndex,
-                englishText,
-                arabicText,
+                englishText: contextData.englishText,
+                arabicText: contextData.arabicText,
+                currentSentenceAr: contextData.currentSentenceAr,
+                currentSentenceEn: contextData.currentSentenceEn,
+                contextSentencesAr: contextData.contextSentencesAr,
+                contextSentencesEn: contextData.contextSentencesEn,
                 rect: e.currentTarget.getBoundingClientRect(),
               });
             }}
-            className="cursor-pointer hover:bg-[var(--glow)]/20 hover:text-[var(--glow)] rounded-md px-[2px] py-[1px] transition-all underline-offset-4 hover:underline"
+            className={`cursor-pointer hover:bg-[var(--glow)]/20 hover:text-[var(--glow)] rounded-md px-[2px] py-[1px] transition-all underline-offset-4 hover:underline ${
+              isMatch
+                ? "bg-[var(--glow)]/30 text-[var(--glow)] font-bold ring-1 ring-[var(--glow)]/40"
+                : ""
+            }`}
             title={`انقر لمعرفة معنى "${clean}"`}
           >
             {token}
@@ -466,28 +776,4 @@ function Choices<T extends string>({
       ))}
     </div>
   );
-}
-
-function buildPairs(en: string, ar: string, separator: string) {
-  const cleanSep = separator || "\n\n";
-  const enBlocks = en
-    .split(cleanSep)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const arBlocks = ar
-    .split(cleanSep)
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  const len = Math.max(enBlocks.length, arBlocks.length);
-  const res: Array<{ en: string; ar: string }> = [];
-
-  for (let i = 0; i < len; i++) {
-    res.push({
-      en: enBlocks[i] ?? "",
-      ar: arBlocks[i] ?? "",
-    });
-  }
-
-  return res;
 }

@@ -21,11 +21,13 @@ export type Settings = {
 };
 
 export type TextDoc = {
+  id?: string;
   title: string;
   en: string;
   ar: string;
   separator: string;
   updatedAt: number;
+  isFavorite?: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -41,13 +43,15 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 const DOC_KEY = "mihrab.doc.v1";
+const HISTORY_KEY = "mihrab.alignment_history.v2";
+const ACTIVE_ID_KEY = "mihrab.active_doc_id.v2";
 const SETTINGS_KEY = "mihrab.settings.v1";
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Split a text into segments using a user-chosen marker placed before each sentence. */
+/** Split a text into segments using a user-chosen marker placed before sentences or after commas/newlines inside paragraphs. */
 export function splitByMarker(raw: string, separator: string): string[] {
   const text = (raw ?? "").replace(/\r\n/g, "\n").trim();
   if (!text) return [];
@@ -58,10 +62,25 @@ export function splitByMarker(raw: string, separator: string): string[] {
       .map((s) => s.trim())
       .filter(Boolean);
   }
-  const parts = text.split(new RegExp(escapeRegExp(marker), "g"));
+
+  // Regex to match the marker whether at line start, after commas (`,`, `،`), or inside paragraphs
+  const escaped = escapeRegExp(marker);
+  const parts = text.split(new RegExp(escaped, "g"));
   const segments = parts.map((s) => s.trim()).filter(Boolean);
+
   if (segments.length > 0) return segments;
   return [text];
+}
+
+/** Utility to automatically insert separator markers after commas (`,`, `،`) or at start of lines for paragraph text. */
+export function autoInsertMarkersAfterCommasAndLines(text: string, marker: string = "#"): string {
+  if (!text) return "";
+  const sep = marker.trim() || "#";
+  // Replace newlines that don't already have marker
+  let formatted = text.replace(/^([^\n#])/gm, `${sep} $1`);
+  // Insert marker after commas followed by whitespace if marker not already present
+  formatted = formatted.replace(/([,،])\s*(?!#)/g, `$1 ${sep} `);
+  return formatted;
 }
 
 export function buildPairs(en: string, ar: string, separator: string): Pair[] {
@@ -75,19 +94,134 @@ export function buildPairs(en: string, ar: string, separator: string): Pair[] {
   return pairs;
 }
 
-export function loadDoc(): TextDoc | null {
-  if (typeof window === "undefined") return null;
+export const SAMPLE: TextDoc = {
+  id: "sample_seneca",
+  title: "Seneca — On the Shortness of Life",
+  separator: "#",
+  updatedAt: 1700000000000,
+  en: `# It is not that we have a short time to live, # but that we waste a lot of it.
+# Life is long enough, # and a sufficiently generous amount has been given to us for the highest achievements.
+# We are not given a short life, # but we make it short, # and we are not ill-supplied but wasteful of it.`,
+  ar: `# ليست المشكلة أن حياتنا قصيرة، # بل أننا نُهدر كثيراً منها.
+# الحياة طويلة بما يكفي، # وقد أُعطينا منها قدراً سخياً يتّسع لأعظم الإنجازات.
+# لم تُمنح لنا حياة قصيرة، # لكننا نجعلها قصيرة، # ولسنا فقراء فيها بل مسرفون.`,
+};
+
+export function getAlignmentHistory(): TextDoc[] {
+  if (typeof window === "undefined") return [SAMPLE];
   try {
-    const raw = window.localStorage.getItem(DOC_KEY);
-    return raw ? (JSON.parse(raw) as TextDoc) : null;
+    const raw = window.localStorage.getItem(HISTORY_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as TextDoc[];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.sort((a, b) => b.updatedAt - a.updatedAt);
+      }
+    }
+    // Migration check: if old DOC_KEY exists, wrap it as first history item
+    const oldRaw = window.localStorage.getItem(DOC_KEY);
+    if (oldRaw) {
+      const oldDoc = JSON.parse(oldRaw) as TextDoc;
+      if (oldDoc && (oldDoc.en || oldDoc.ar)) {
+        const migrated: TextDoc = {
+          ...oldDoc,
+          id: oldDoc.id || `doc_${Date.now()}`,
+          updatedAt: oldDoc.updatedAt || Date.now(),
+        };
+        const initialList = [migrated, SAMPLE];
+        window.localStorage.setItem(HISTORY_KEY, JSON.stringify(initialList));
+        window.localStorage.setItem(ACTIVE_ID_KEY, migrated.id);
+        return initialList;
+      }
+    }
+    // Default fallback
+    window.localStorage.setItem(HISTORY_KEY, JSON.stringify([SAMPLE]));
+    window.localStorage.setItem(ACTIVE_ID_KEY, SAMPLE.id!);
+    return [SAMPLE];
   } catch {
-    return null;
+    return [SAMPLE];
   }
 }
 
-export function saveDoc(doc: TextDoc) {
+export function saveAlignmentHistory(history: TextDoc[]) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(DOC_KEY, JSON.stringify(doc));
+  try {
+    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  } catch {
+    // quota exceeded or private mode
+  }
+}
+
+export function getActiveDocId(): string {
+  if (typeof window === "undefined") return SAMPLE.id!;
+  return window.localStorage.getItem(ACTIVE_ID_KEY) || SAMPLE.id!;
+}
+
+export function setActiveDocId(id: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(ACTIVE_ID_KEY, id);
+}
+
+export function loadDoc(): TextDoc {
+  const history = getAlignmentHistory();
+  const activeId = getActiveDocId();
+  const found = history.find((d) => d.id === activeId);
+  if (found) return found;
+  return history[0] || SAMPLE;
+}
+
+export function saveDoc(doc: TextDoc): TextDoc {
+  if (typeof window === "undefined") return doc;
+
+  const docId = doc.id || `doc_${Date.now()}`;
+  const updatedDoc: TextDoc = {
+    ...doc,
+    id: docId,
+    updatedAt: Date.now(),
+  };
+
+  const history = getAlignmentHistory();
+  const existingIdx = history.findIndex((d) => d.id === docId);
+
+  let newHistory: TextDoc[];
+  if (existingIdx >= 0) {
+    newHistory = [...history];
+    newHistory[existingIdx] = updatedDoc;
+  } else {
+    newHistory = [updatedDoc, ...history];
+  }
+
+  saveAlignmentHistory(newHistory);
+  setActiveDocId(docId);
+  window.localStorage.setItem(DOC_KEY, JSON.stringify(updatedDoc));
+
+  return updatedDoc;
+}
+
+export function deleteDocFromHistory(id: string): TextDoc[] {
+  if (typeof window === "undefined") return [SAMPLE];
+  const history = getAlignmentHistory();
+  const filtered = history.filter((d) => d.id !== id);
+  const finalList = filtered.length > 0 ? filtered : [SAMPLE];
+
+  saveAlignmentHistory(finalList);
+
+  if (getActiveDocId() === id) {
+    setActiveDocId(finalList[0].id || SAMPLE.id!);
+  }
+
+  return finalList;
+}
+
+export function createNewAlignmentDoc(): TextDoc {
+  const newDoc: TextDoc = {
+    id: `doc_${Date.now()}`,
+    title: "نص محاذاة جديد",
+    en: "",
+    ar: "",
+    separator: "#",
+    updatedAt: Date.now(),
+  };
+  return saveDoc(newDoc);
 }
 
 export function loadSettings(): Settings {
@@ -129,16 +263,4 @@ export const THEME_CLASS: Record<SanctuaryTheme, string> = {
   emerald: "",
   sand: "",
   royal: "dark",
-};
-
-export const SAMPLE: TextDoc = {
-  title: "Seneca — On the Shortness of Life",
-  separator: "#",
-  updatedAt: 0,
-  en: `# It is not that we have a short time to live, but that we waste a lot of it.
-# Life is long enough, and a sufficiently generous amount has been given to us for the highest achievements.
-# We are not given a short life, but we make it short, and we are not ill-supplied but wasteful of it.`,
-  ar: `# ليست المشكلة أن حياتنا قصيرة، بل أننا نُهدر كثيراً منها.
-# الحياة طويلة بما يكفي، وقد أُعطينا منها قدراً سخياً يتّسع لأعظم الإنجازات.
-# لم تُمنح لنا حياة قصيرة، لكننا نجعلها قصيرة، ولسنا فقراء فيها بل مسرفون.`,
 };

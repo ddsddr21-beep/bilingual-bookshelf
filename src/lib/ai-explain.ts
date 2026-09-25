@@ -4,31 +4,35 @@ import { GoogleGenAI } from "@google/genai";
 export type ContextAnalysisResponse = {
   success: true;
   word: string;
-  arabicWordInTranslation: string;
+  contextualEnglishWord: string;
+  englishLemma: string;
   explanation: string;
   matchedSentenceEn: string;
   matchedSentenceAr: string;
-  englishText: string;
-  arabicText: string;
 };
 
-export type LexicalAiResponse = {
-  success: true;
-  word: string;
-  phonetic: string;
-  partOfSpeech: string;
-  arabicTranslation: string;
-  englishDefinition: string;
-  example: string;
-  synonyms: string[];
-};
+export function isArabicWord(str: string): boolean {
+  return /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(str);
+}
 
-export const explainContextFn = createServerFn({ method: "POST" })
-  .validator((data: { word: string; englishText: string; arabicText: string }) => data)
+/**
+ * Server Function: Extracts the contextual counterpart using Gemini from 5-sentence bilingual window.
+ * AI's ONLY role is identifying the exact English word used in the parallel translation context.
+ */
+export const extractContextualTargetFn = createServerFn({ method: "POST" })
+  .validator(
+    (data: {
+      word: string;
+      currentSentenceAr: string;
+      contextSentencesAr?: string[]; // 2 before, current, 2 after
+      currentSentenceEn: string;
+      contextSentencesEn?: string[]; // 2 before, current, 2 after
+    }) => data,
+  )
   .handler(async ({ data }) => {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error("مفتاح GEMINI_API_KEY غير متوفر في متغيرات البيئة.");
+      throw new Error("مفتاح GEMINI_API_KEY غير متوفر في بيئة التشغيل.");
     }
 
     const ai = new GoogleGenAI({
@@ -40,35 +44,53 @@ export const explainContextFn = createServerFn({ method: "POST" })
       },
     });
 
-    const { word, englishText, arabicText } = data;
+    const {
+      word,
+      currentSentenceAr,
+      contextSentencesAr = [],
+      currentSentenceEn,
+      contextSentencesEn = [],
+    } = data;
 
-    const prompt = `أنت أستاذ لغويات ومترجم أدبي خبير في المقارنة النصية بين الإنجليزية والعربية.
+    const isAr = isArabicWord(word);
 
-المطلوب: تحليل النص الإنجليزي والنص العربي المقابل له، واستخراج كيف أُدرجت ترجمة الكلمة الإنجليزية التالية داخل النص العربي المقابل.
+    const fullArContext =
+      contextSentencesAr.length > 0 ? contextSentencesAr.join(" ") : currentSentenceAr;
+    const fullEnContext =
+      contextSentencesEn.length > 0 ? contextSentencesEn.join(" ") : currentSentenceEn;
 
-الكلمة الإنجليزية المستهدفة: "${word}"
+    const prompt = `أنت خبير لغويات ومترجم نصوص مقارن. مهمتك الوحيدة هي تحديد اللفظة الإنجليزية الدقيقة المستخدمة في النص الإنجليزي المقابل للكلمة المحددة ("${word}") في هذا السياق المحدد بدقة، دون تأليف أي تعريفات أو أمثلة.
 
-النص الإنجليزي الأصلي:
-"${englishText}"
+الكلمة المستهدفة: "${word}" (${isAr ? "كلمة عربية" : "كلمة إنجليزية"})
 
-النص العربي المقابل (الترجمة الموازية):
-"${arabicText}"
+الجملة العربية الأساسية:
+"${currentSentenceAr}"
 
-المهمة الدقيقة:
-1. استخرج الكلمة أو العبارة العربية المحددة الموجودة داخل النص العربي المقابل والتي استخدمها المترجم لمقابلة الكلمة الإنجليزية "${word}".
-2. حدد الجملة الإنجليزية التي وردت فيها الكلمة والجملة العربية المقابلة لها في الترجمة.
-3. قدم شرحاً سياقياً ميسراً يوضح اختيار المترجم لهذه العبارة وكيف أدّت المعنى والمضمون في هذا السياق الأدبي/النصي.
+سياق النص العربي (الجمل السابقة والحالية واللاحقة):
+"${fullArContext}"
 
-أرجع النتيجة بصيغة JSON حصرية بالهيكل التالي:
+الجملة الإنجليزية المقابلة الأساسية:
+"${currentSentenceEn}"
+
+سياق النص الإنجليزي (الجمل السابقة والحالية واللاحقة):
+"${fullEnContext}"
+
+المطلوب بدقة:
+1. استخرج الكلمة الإنجليزية الدقيقة المستخدمة في النص الإنجليزي المقابل للتعبير عن هذه الكلمة ("${word}") في هذا السياق (مثال: "لعبنا" في السياق -> "played").
+2. حدد أصل الكلمة الإنجليزية المجرد (English lemma) (مثال: "played" -> "play"، "wasteful" -> "waste").
+3. قدم شرحاً لغوياً مقتضباً (جملة أو جملتين) يوضح دلالة هذه الكلمة وسر اختيارها في هذا السياق الموازي.
+
+أرجع النتيجة بصيغة JSON حصرية بالهيكل التالي فقط:
 {
-  "arabicWordInTranslation": "الكلمة أو العبارة العربية المستخرجة نصياً من الترجمة المقابلة",
-  "explanation": "شرح سياقي يوضح كيف عبر المترجم عن الكلمة الإنجليزية وما تضفيه على النص العربي",
-  "matchedSentenceEn": "الجملة الإنجليزية المحتوية على الكلمة",
-  "matchedSentenceAr": "الجملة العربية المقابلة لها"
+  "contextualEnglishWord": "الكلمة الإنجليزية المستخدمة في السياق الفعلي",
+  "englishLemma": "أصل الكلمة الإنجليزية المجرد",
+  "explanation": "شرح سياقي تحليلي مقتضب",
+  "matchedSentenceEn": "الجملة الإنجليزية التي ورد فيها المقابل",
+  "matchedSentenceAr": "الجملة العربية المقابلة"
 }`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
+      model: "gemini-3.1-flash-lite",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -78,103 +100,34 @@ export const explainContextFn = createServerFn({ method: "POST" })
     const text = response.text || "{}";
     try {
       const parsed = JSON.parse(text) as {
-        arabicWordInTranslation?: string;
+        contextualEnglishWord?: string;
+        englishLemma?: string;
         explanation?: string;
         matchedSentenceEn?: string;
         matchedSentenceAr?: string;
       };
+
+      const contextualWord = parsed.contextualEnglishWord?.trim() || (isAr ? "counterpart" : word);
+      const lemma = parsed.englishLemma?.trim() || contextualWord;
+
       return {
         success: true as const,
         word,
-        arabicWordInTranslation: parsed.arabicWordInTranslation || "لم تُحدد الكلمة صراحة",
-        explanation: parsed.explanation || "تم استخراج المعنى المقابل من النص العربي الموازي.",
-        matchedSentenceEn: parsed.matchedSentenceEn || englishText,
-        matchedSentenceAr: parsed.matchedSentenceAr || arabicText,
-        englishText,
-        arabicText,
+        contextualEnglishWord: contextualWord,
+        englishLemma: lemma,
+        explanation: parsed.explanation || "تم استخراج المقابل السياقي بدقة من النص المقابل.",
+        matchedSentenceEn: parsed.matchedSentenceEn || currentSentenceEn,
+        matchedSentenceAr: parsed.matchedSentenceAr || currentSentenceAr,
       };
     } catch {
       return {
         success: true as const,
         word,
-        arabicWordInTranslation: "المعنى المقابل",
-        explanation: text,
-        matchedSentenceEn: englishText,
-        matchedSentenceAr: arabicText,
-        englishText,
-        arabicText,
-      };
-    }
-  });
-
-export const getAiLexicalFn = createServerFn({ method: "POST" })
-  .validator((data: { word: string }) => data)
-  .handler(async ({ data }) => {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("مفتاح GEMINI_API_KEY غير متوفر.");
-    }
-
-    const ai = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          "User-Agent": "aistudio-build",
-        },
-      },
-    });
-
-    const prompt = `قدم معجماً لغوياً دقيقاً وشاملاً باللغة العربية للكلمة الإنجليزية التالية: "${data.word}".
-
-أرجع النتيجة بصيغة JSON فقط بهذا الهيكل:
-{
-  "phonetic": "/نطق صوتي دقيق/",
-  "partOfSpeech": "نوع الكلمة بالعربية (اسم / فعل / صفة / ظرف...)",
-  "arabicTranslation": "الترجمات العربية المعجمية الشائعة والدقيقة مفصولة بـ /",
-  "englishDefinition": "تعريف معجمي بالإنجليزية ميسر ودقيق",
-  "example": "جملة إنجليزية توضيحية مع ترجمتها العربية بين قوسين",
-  "synonyms": ["مرادف1", "مرادف2", "مرادف3"]
-}`;
-
-    const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-      },
-    });
-
-    const text = response.text || "{}";
-    try {
-      const parsed = JSON.parse(text) as {
-        phonetic?: string;
-        partOfSpeech?: string;
-        arabicTranslation?: string;
-        englishDefinition?: string;
-        example?: string;
-        synonyms?: string[];
-      };
-
-      return {
-        success: true as const,
-        word: data.word,
-        phonetic: parsed.phonetic || "",
-        partOfSpeech: parsed.partOfSpeech || "مفردة إنجليزية",
-        arabicTranslation: parsed.arabicTranslation || data.word,
-        englishDefinition: parsed.englishDefinition || "",
-        example: parsed.example || "",
-        synonyms: Array.isArray(parsed.synonyms) ? parsed.synonyms : [],
-      };
-    } catch {
-      return {
-        success: true as const,
-        word: data.word,
-        phonetic: "",
-        partOfSpeech: "مفردة",
-        arabicTranslation: data.word,
-        englishDefinition: "",
-        example: "",
-        synonyms: [],
+        contextualEnglishWord: isAr ? "counterpart" : word,
+        englishLemma: isAr ? "counterpart" : word,
+        explanation: "تحليل المقابلة النصية في السياق الموازي.",
+        matchedSentenceEn: currentSentenceEn,
+        matchedSentenceAr: currentSentenceAr,
       };
     }
   });

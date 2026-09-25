@@ -9,6 +9,9 @@ import {
   ArrowLeft,
   Palette,
   RotateCcw,
+  History,
+  Plus,
+  Save,
 } from "lucide-react";
 import {
   DEFAULT_SETTINGS,
@@ -18,10 +21,12 @@ import {
   loadSettings,
   saveDoc,
   saveSettings,
+  createNewAlignmentDoc,
   type Settings,
   type TextDoc,
   type SanctuaryTheme,
 } from "@/lib/reading";
+import { AlignmentHistoryDrawer } from "@/components/AlignmentHistoryDrawer";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -45,29 +50,53 @@ export const Route = createFileRoute("/")({
 function Studio() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<"en" | "ar">("en");
-  const [doc, setDoc] = useState<TextDoc>({
-    title: "",
-    en: "",
-    ar: "",
-    separator: DEFAULT_SETTINGS.separator,
-    updatedAt: 0,
-  });
+  const [doc, setDoc] = useState<TextDoc>(SAMPLE);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [ready, setReady] = useState(false);
+  const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+  const [savedBadge, setSavedBadge] = useState(false);
 
   useEffect(() => {
-    const stored = loadDoc();
-    const storedSettings = loadSettings();
-    setSettings(storedSettings);
-    setDoc(stored ?? { ...SAMPLE, separator: storedSettings.separator, updatedAt: Date.now() });
+    const loadedDoc = loadDoc();
+    const loadedSettings = loadSettings();
+    if (loadedDoc) setDoc(loadedDoc);
+    if (loadedSettings) setSettings(loadedSettings);
     setReady(true);
   }, []);
+
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.setAttribute("data-theme", settings.theme);
+      if (settings.theme === "midnight" || settings.theme === "royal") {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
+    }
+  }, [settings.theme]);
 
   const pairs = buildPairs(doc.en, doc.ar, doc.separator);
   const mismatch = pairs.filter((p) => !p.en || !p.ar).length;
 
   function update(patch: Partial<TextDoc>) {
-    setDoc((prev) => ({ ...prev, ...patch, updatedAt: Date.now() }));
+    setDoc((prev) => {
+      const nextDoc = { ...prev, ...patch, updatedAt: Date.now() };
+      // Save continuously so text is NEVER lost on exit/refresh
+      saveDoc(nextDoc);
+      return nextDoc;
+    });
+    setSavedBadge(true);
+    setTimeout(() => setSavedBadge(false), 1500);
+  }
+
+  function handleCreateNew() {
+    const fresh = createNewAlignmentDoc();
+    setDoc(fresh);
+  }
+
+  function handleSelectDoc(selected: TextDoc) {
+    saveDoc(selected);
+    setDoc(selected);
   }
 
   function start() {
@@ -82,9 +111,9 @@ function Studio() {
       className="sanctuary min-h-screen transition-colors duration-300"
       data-theme={settings.theme}
     >
-      <div className="mx-auto max-w-2xl px-5 pb-28 pt-10">
+      <div className="mx-auto max-w-2xl px-5 pb-28 pt-8">
         {/* Header Hero Section */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3.5">
             <span className="glow-gradient flex h-12 w-12 items-center justify-center rounded-2xl shadow-md text-[var(--paper)] transition-transform hover:scale-105">
               <BookOpen className="h-6 w-6" />
@@ -103,10 +132,38 @@ function Studio() {
               </p>
             </div>
           </div>
+
+          {/* History Drawer Trigger Button */}
+          <button
+            onClick={() => setShowHistoryDrawer(true)}
+            className="paper-raised rule-line flex items-center gap-2 rounded-2xl border px-3.5 py-2.5 text-xs font-bold ink shadow-sm hover:border-[var(--glow)] hover:text-[var(--glow)] transition-all"
+            title="سجل المحاذاة والنصوص المحفوظة"
+          >
+            <History className="h-4 w-4 text-[var(--glow)]" />
+            <span className="font-naskh hidden sm:inline">سجل النصوص</span>
+          </button>
         </div>
 
         {/* Text Input Card */}
-        <section className="paper-raised rule-line mt-8 rounded-3xl border p-5 sm:p-6 shadow-xl transition-all">
+        <section className="paper-raised rule-line mt-6 rounded-3xl border p-5 sm:p-6 shadow-xl transition-all relative">
+          {/* Top Card Bar: New Alignment & Save status indicator */}
+          <div className="flex items-center justify-between mb-4 pb-3 border-b rule-line">
+            <div className="flex items-center gap-2 font-naskh text-xs ink-soft">
+              <Save
+                className={`h-3.5 w-3.5 ${savedBadge ? "text-emerald-500 animate-pulse" : ""}`}
+              />
+              <span>{savedBadge ? "تم الحفظ تلقائياً" : "محفوظ تلقائياً في السجل"}</span>
+            </div>
+
+            <button
+              onClick={handleCreateNew}
+              className="glow-gradient text-[var(--paper)] font-naskh text-xs px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 shadow-xs transition-transform active:scale-95"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>نص محاذاة جديد</span>
+            </button>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="sm:col-span-2">
               <label className="ink-soft font-naskh text-xs font-semibold">
@@ -121,7 +178,10 @@ function Studio() {
             </div>
 
             <div>
-              <label className="ink-soft font-naskh text-xs font-semibold">رمز الفاصل للجمل</label>
+              <label className="ink-soft font-naskh text-xs font-semibold flex items-center justify-between">
+                <span>رمز الفاصل للجمل</span>
+                <span className="text-[10px] text-[var(--glow)] font-normal">داخل الفقرة</span>
+              </label>
               <input
                 value={doc.separator}
                 onChange={(e) => update({ separator: e.target.value })}
@@ -131,8 +191,16 @@ function Studio() {
             </div>
           </div>
 
+          <p className="mt-2 text-[11px] font-naskh ink-soft leading-relaxed">
+            💡 <strong className="ink font-semibold">مرونة الفواصل:</strong> يتعرف التطبيق تلقائياً
+            على رمز الفصل (مثل{" "}
+            <code className="font-mono text-[var(--glow)] font-bold">{doc.separator || "#"}</code>)
+            أينما وُضع؛ سواء بين الأسطر، في بداية السطر، بعد الفواصل، أو في أي موضع داخل الفقرة
+            لتقسيم المقاطع وتطابقها بدقة.
+          </p>
+
           {/* Language Tabs */}
-          <div className="rule-line mt-6 flex gap-1 rounded-2xl border bg-[var(--paper)] p-1.5">
+          <div className="mt-5 rule-line flex gap-1 rounded-2xl border bg-[var(--paper)] p-1.5">
             {(
               [
                 ["en", "النص الإنجليزي الأصلي"],
@@ -142,7 +210,7 @@ function Studio() {
               <button
                 key={key}
                 onClick={() => setTab(key)}
-                className={`font-naskh flex-1 rounded-xl py-2.5 text-xs sm:text-sm font-semibold transition-all ${
+                className={`font-naskh flex-1 rounded-xl py-2 text-xs sm:text-sm font-semibold transition-all ${
                   tab === key ? "glow-gradient text-[var(--paper)] shadow-md" : "ink-soft hover:ink"
                 }`}
               >
@@ -171,8 +239,8 @@ function Studio() {
             />
           )}
 
-          {/* Realtime Alignment Status Counter */}
-          <div className="mt-4 flex items-center justify-between border-t rule-line pt-3 text-xs">
+          {/* Realtime Alignment Status Counter & Controls */}
+          <div className="mt-4 flex flex-wrap items-center justify-between border-t rule-line pt-3 text-xs gap-2">
             <div className="ink-soft font-naskh flex items-center gap-1.5 font-medium">
               <Sparkles className="h-4 w-4 text-[var(--glow)]" />
               {ready ? (
@@ -193,13 +261,33 @@ function Studio() {
               )}
             </div>
 
-            <button
-              onClick={() => update({ ...SAMPLE, updatedAt: Date.now() })}
-              className="ink-soft hover:ink font-naskh flex items-center gap-1 text-xs transition-colors"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              <span>تحميل نص تجريبي (سينيكا)</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowHistoryDrawer(true)}
+                className="ink-soft hover:ink font-naskh flex items-center gap-1 text-xs transition-colors"
+              >
+                <History className="h-3.5 w-3.5 text-[var(--glow)]" />
+                <span>عرض سجل النصوص</span>
+              </button>
+
+              <span className="text-gray-300 dark:text-gray-700">|</span>
+
+              <button
+                onClick={() =>
+                  update({
+                    ...SAMPLE,
+                    id: `sample_${Date.now()}`,
+                    title: SAMPLE.title,
+                    en: SAMPLE.en,
+                    ar: SAMPLE.ar,
+                  })
+                }
+                className="ink-soft hover:ink font-naskh flex items-center gap-1 text-xs transition-colors"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>نص تجريبي (سينيكا)</span>
+              </button>
+            </div>
           </div>
         </section>
 
@@ -271,6 +359,15 @@ function Studio() {
           <ArrowLeft className="h-5 w-5" />
         </button>
       </div>
+
+      {/* Alignment History Drawer */}
+      <AlignmentHistoryDrawer
+        isOpen={showHistoryDrawer}
+        onClose={() => setShowHistoryDrawer(false)}
+        onSelectDoc={handleSelectDoc}
+        onNewDoc={handleCreateNew}
+        activeDocId={doc.id}
+      />
     </div>
   );
 }
