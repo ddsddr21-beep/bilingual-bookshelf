@@ -1,6 +1,9 @@
 import { isArabicWord, extractContextualTargetFn } from "@/lib/ai-explain";
 import { analyzeFarahidi } from "@/lib/dictionaries/farahidi-stemmer";
-import { lookupFreeDict, FREEDICT_AR_EN } from "@/lib/dictionaries/freedict-ar-en";
+import {
+  lookupFreeDict,
+  resolveArabicLemmaWithFreeDict,
+} from "@/lib/dictionaries/freedict-ar-en";
 import {
   lookupWordNet,
   OPEN_WORDNET_DATA,
@@ -249,19 +252,17 @@ async function executePath1AiContext(
  * PATH 2: Offline Farahidi Morphological Analysis + FreeDict + Open WordNet + Wiktextract
  * Operates 100% offline without network calls or synthetic fallbacks.
  */
-export function executePath2LocalMorphology(rawWord: string): WordReferenceEntry {
+export async function executePath2LocalMorphology(rawWord: string): Promise<WordReferenceEntry> {
   const isAr = isArabicWord(rawWord);
 
   if (isAr) {
-    // 1. Farahidi Morphological Analysis
-    const analysis = analyzeFarahidi(rawWord);
-    const primaryLemma = analysis.lemma;
-
-    // 2. FreeDict Arabic -> English lookup
-    const freedictMatch = lookupFreeDict(primaryLemma) || lookupFreeDict(rawWord);
+    // 1. Farahidi Morphological Resolution against authentic FreeDict
+    const resolved = await resolveArabicLemmaWithFreeDict(rawWord);
+    const primaryLemma = resolved.lemma;
+    const freedictMatch = resolved.entry || (await lookupFreeDict(primaryLemma)) || (await lookupFreeDict(rawWord));
     const candidateTranslations: string[] = freedictMatch ? freedictMatch.translations : [];
 
-    // 3. Multi-candidate local WordNet & Wiktextract analysis
+    // 2. Multi-candidate local WordNet analysis
     const combinedMeanings: WordMeaningSense[] = [];
     let primaryPhonetic: string | undefined;
 
@@ -274,7 +275,7 @@ export function executePath2LocalMorphology(rawWord: string): WordReferenceEntry
           partOfSpeech: s.partOfSpeech,
           arabicTranslation: freedictMatch ? `${cand} (${freedictMatch.arLemma})` : cand,
           englishDefinition: s.englishDefinition,
-          arabicDefinition: freedictMatch?.arExplanation || s.arabicDefinition,
+          arabicDefinition: s.arabicDefinition,
           examples: s.examples,
           synonyms: s.synonyms,
           etymology: s.etymology,
@@ -290,7 +291,7 @@ export function executePath2LocalMorphology(rawWord: string): WordReferenceEntry
       phonetic: primaryPhonetic,
       meanings: combinedMeanings, // Genuine local data only; empty array if not found
       sourceMode: "local_farahidi_freedict_wordnet",
-      sourceLabel: "المسار المحلي: فراهيدي (Farahidi) + FreeDict + WordNet + Wiktextract",
+      sourceLabel: "المسار المحلي: فراهيدي (Farahidi) + معجم FreeDict الأصلي",
       timestamp: Date.now(),
     };
   }
@@ -298,7 +299,7 @@ export function executePath2LocalMorphology(rawWord: string): WordReferenceEntry
   // If English word clicked
   const localData = queryLocalEnglishDatabases(rawWord);
   const targetLemma = localData.matchedLemma || rawWord;
-  const freedictMatch = lookupFreeDict(rawWord) || lookupFreeDict(targetLemma);
+  const freedictMatch = (await lookupFreeDict(rawWord)) || (await lookupFreeDict(targetLemma));
 
   return {
     word: rawWord,
@@ -307,7 +308,7 @@ export function executePath2LocalMorphology(rawWord: string): WordReferenceEntry
     meanings: localData.senses, // Genuine local data only; empty array if not found
     candidateTranslations: freedictMatch?.translations || [targetLemma],
     sourceMode: "local_farahidi_freedict_wordnet",
-    sourceLabel: "المسار المحلي: Open English WordNet + Wiktextract + FreeDict",
+    sourceLabel: "المسار المحلي: FreeDict + Open English WordNet",
     timestamp: Date.now(),
   };
 }
@@ -353,8 +354,8 @@ export async function getWordReferenceEntry(
     }
   }
 
-  // 2. Fallback to local offline morphological analysis (Farahidi + FreeDict + WordNet + Wiktextract)
-  const offlineEntry = executePath2LocalMorphology(word);
+  // 2. Fallback to local offline morphological analysis (Farahidi + FreeDict)
+  const offlineEntry = await executePath2LocalMorphology(word);
   saveToLocalCache(cacheKey, offlineEntry);
   return offlineEntry;
 }
@@ -447,12 +448,12 @@ export async function preloadDocVocabulary(pairs: Array<{ en: string; ar: string
   }
 
   // Warm up offline entries in cache in idle time
-  const warmUp = () => {
-    wordsToWarm.forEach((w) => {
-      const entry = executePath2LocalMorphology(w);
+  const warmUp = async () => {
+    for (const w of wordsToWarm) {
+      const entry = await executePath2LocalMorphology(w);
       const key = getContextCacheKey(w);
       saveToLocalCache(key, entry);
-    });
+    }
   };
 
   if ("requestIdleCallback" in window) {
