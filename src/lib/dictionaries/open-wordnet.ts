@@ -28,6 +28,7 @@ type RawWordNetSense = {
 
 // Core high-frequency lemmas loaded synchronously in memory
 const coreWordNet = coreWordNetData as Record<string, RawWordNetSense[]>;
+export const OPEN_WORDNET_DATA = coreWordNet;
 
 // In-memory cache of loaded character chunks
 const loadedWordNetChunks = new Map<string, Record<string, RawWordNetSense[]>>();
